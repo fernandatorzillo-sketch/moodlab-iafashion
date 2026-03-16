@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 38 30% 97%;
+    --foreground: 0 0% 0%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+
+    --primary: 37 24% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 38 56% 82%;
+    --secondary-foreground: 0 0% 0%;
+
+    --muted: 38 20% 93%;
+    --muted-foreground: 20 10% 40%;
+
+    --accent: 38 56% 82%;
+    --accent-foreground: 0 0% 0%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 38 20% 86%;
+    --input: 38 20% 86%;
+    --ring: 37 24% 52%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 38 30% 97%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 38 30% 97%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 38 30% 97%;
+
+    --primary: 37 24% 52%;
+    --primary-foreground: 0 0% 0%;
+
+    --secondary: 20 30% 15%;
+    --secondary-foreground: 38 30% 97%;
+
+    --muted: 20 20% 14%;
+    --muted-foreground: 38 15% 60%;
+
+    --accent: 20 30% 15%;
+    --accent-foreground: 38 30% 97%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 20 15% 18%;
+    --input: 20 15% 18%;
+    --ring: 37 24% 52%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'DM Serif Display', serif;
+  }
+}
