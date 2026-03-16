@@ -1,44 +1,35 @@
-# MoodLab Data Fix & Enhancement Plan
+# Moodlab.AI — Full Recommendation Engine MVP
 
-## Root Cause Analysis
-1. **clientes**: Duplicated rows with corrupted `nome` field (tab-separated data). Clean rows exist (id=5,6,7 and 14,15,16)
-2. **pedidos**: `cliente_id=None` for most orders — orders not linked to clients
-3. **itens_pedido**: `pedido_id` stores `numero_pedido` (external order number like 222), NOT `pedidos.id` (internal ID like 2)
-4. **closet_cliente**: Empty because the chain email→cliente→pedidos→itens→produtos is broken at every link
+## Design Guidelines
+- **Primary**: #A3966A (Gold), **Secondary**: #895D2B (Dark Gold)
+- **Background**: #FFFFFF, **Text**: #1A1A1A
+- **Font**: DM Serif Display (headings), DM Sans (body)
+- **Cards**: rounded-xl, border, hover shadow
+- **Brand**: Moodlab.AI — AI-powered fashion recommendation engine
 
-## Fix Strategy
-### Task 1: Rewrite customer_closet_service.py
-- Use MULTIPLE lookup strategies in sequence:
-  - Strategy A: email → clientes.email → pedidos.cliente_id → itens_pedido.pedido_id (current, broken)
-  - Strategy B: email → clientes.email → pedidos by numero_pedido matching → itens_pedido by numero_pedido
-  - Strategy C: Direct SKU lookup from itens_pedido where pedido_id matches any numero_pedido from pedidos
+## Database Tables (DONE)
+- ✅ empresas, clientes, produtos_empresa, pedidos, itens_pedido, closet_cliente
+- ✅ brand_settings, curated_looks, curated_look_items, brand_rules, recommendation_logs
 
-### Task 2: Create data cleanup endpoint
-- POST /api/v1/import/cleanup-data
-  - Remove duplicate/corrupted clientes (keep clean ones)
-  - Link pedidos to correct clientes by matching numero_pedido patterns
-  - Fix itens_pedido.pedido_id to use internal pedidos.id
+## Backend APIs to Create
+1. `/api/v1/engine/search` — Product search by text, category, tags, occasion
+2. `/api/v1/engine/recommendations` — AI hybrid recommendations (deepseek-v3.2)
+3. `/api/v1/engine/outfits` — AI outfit generation from closet + catalog
+4. `/api/v1/engine/customer-closet` — Customer closet with full product details
 
-### Task 3: Add email_cliente column to pedidos
-- ALTER TABLE pedidos ADD COLUMN email_cliente VARCHAR
-- Populate from clientes table where possible
+## Frontend Pages to Create/Update
+1. **BrandSettingsPage** — White-label visual customization per company
+2. **CuratedLooksPage** — Look library: create/edit/manage curated looks + items
+3. **BrandRulesPage** — Recommendation rules configuration
+4. **AILearningPage** — AI learning dashboard with recommendation analytics
+5. **Update Header** — Add new nav items
+6. **Update App.tsx** — Add new routes
 
-### Task 4: Improve MeuClosetPage debug panel
-- Show full chain visualization
-- Add cleanup button
-
-### Task 5: Improve IntegrationsPage
-- Add sync status indicators
-- Add last sync timestamp display
-
-### Task 6: Add monitoring dashboard metrics
-- Show counts: clientes, pedidos, itens, produtos, closets
-- Show data health indicators
-
-## Files to Create/Modify
-1. `backend/services/customer_closet_service.py` - Rewrite lookup logic
-2. `backend/routers/import_router.py` - Add cleanup endpoint  
-3. `backend/services/import_service.py` - Add cleanup + email_cliente logic
-4. `frontend/src/pages/MeuClosetPage.tsx` - Enhanced debug + cleanup
-5. `frontend/src/pages/IntegrationsPage.tsx` - Sync status
-6. `frontend/src/pages/EmpresaDashboardPage.tsx` - Monitoring metrics
+## Files to Create
+- `app/backend/routers/engine.py` — All 4 engine API endpoints
+- `app/backend/services/engine_service.py` — Engine logic + AI integration
+- `app/frontend/src/pages/BrandSettingsPage.tsx` — White-label settings
+- `app/frontend/src/pages/CuratedLooksPage.tsx` — Look library + curation
+- `app/frontend/src/pages/BrandRulesPage.tsx` — Recommendation rules
+- `app/frontend/src/pages/AILearningPage.tsx` — AI learning dashboard
+- Update: `Header.tsx`, `App.tsx`, `LanguageContext.tsx`
