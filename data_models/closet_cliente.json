@@ -1,0 +1,42 @@
+{
+    "title": "closet_cliente",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Company ID reference"
+        },
+        "cliente_id": {
+            "type": "integer",
+            "description": "Client ID reference"
+        },
+        "produto_id": {
+            "type": "integer",
+            "description": "Product ID reference"
+        },
+        "origem": {
+            "type": "string",
+            "description": "Origin: compra, importacao, manual"
+        },
+        "data_entrada": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Entry date"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "cliente_id",
+        "produto_id",
+        "user_id"
+    ]
+}

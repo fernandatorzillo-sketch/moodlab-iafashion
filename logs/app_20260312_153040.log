@@ -1,0 +1,69 @@
+2026-03-12 15:30:40,748 - main - INFO - === Logging system initialized ===
+2026-03-12 15:30:40,748 - main - INFO - Log file: logs/app_20260312_153040.log
+2026-03-12 15:30:40,748 - main - INFO - Log level: INFO
+2026-03-12 15:30:40,748 - main - INFO - Timestamp: 20260312_153040
+2026-03-12 15:30:41,373 - main - INFO - Included router: routers.aihub.router
+2026-03-12 15:30:41,392 - main - INFO - Included router: routers.auth.router
+2026-03-12 15:30:41,449 - main - INFO - Included router: routers.clientes.router
+2026-03-12 15:30:41,589 - main - INFO - Included router: routers.closet_cliente.router
+2026-03-12 15:30:41,652 - main - INFO - Included router: routers.empresas.router
+2026-03-12 15:30:41,654 - main - INFO - Included router: routers.health.router
+2026-03-12 15:30:41,695 - main - INFO - Included router: routers.import_router.router
+2026-03-12 15:30:41,737 - main - INFO - Included router: routers.itens_pedido.router
+2026-03-12 15:30:41,777 - main - INFO - Included router: routers.outfit_recommendations.router
+2026-03-12 15:30:41,819 - main - INFO - Included router: routers.pedidos.router
+2026-03-12 15:30:41,859 - main - INFO - Included router: routers.products.router
+2026-03-12 15:30:41,910 - main - INFO - Included router: routers.produtos_empresa.router
+2026-03-12 15:30:41,950 - main - INFO - Included router: routers.purchases.router
+2026-03-12 15:30:41,970 - main - INFO - Included router: routers.settings.router
+2026-03-12 15:30:42,003 - main - INFO - Included router: routers.storage.router
+2026-03-12 15:30:42,050 - main - INFO - Included router: routers.style_preferences.router
+2026-03-12 15:30:42,059 - main - INFO - Included router: routers.user.router
+2026-03-12 15:30:42,060 - main - INFO - === Application startup initiated ===
+2026-03-12 15:30:42,060 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-12 15:30:42,060 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-12 15:30:42,060 - core.database - INFO - Starting database initialization...
+2026-03-12 15:30:42,060 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-03-12 15:30:42,061 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-03-12 15:30:42,061 - core.database - INFO - Creating async database engine...
+2026-03-12 15:30:42,062 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-03-12 15:30:42,220 - core.database - INFO - Database engine created successfully
+2026-03-12 15:30:42,221 - core.database - INFO - Creating async session maker...
+2026-03-12 15:30:42,221 - core.database - INFO - Async session maker created successfully
+2026-03-12 15:30:42,221 - core.database - INFO - Database connection initialized successfully
+2026-03-12 15:30:42,221 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-12 15:30:42,221 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-12 15:30:42,221 - core.database - INFO - 🔧 Starting table creation...
+2026-03-12 15:30:44,017 - core.database - INFO - Tables initialized successfully
+2026-03-12 15:30:44,018 - core.database - DEBUG - [DB_OP] Create tables completed in 1.7968s
+2026-03-12 15:30:44,076 - services.database - INFO - 🔧 Table creation completed
+2026-03-12 15:30:44,076 - services.database - INFO - Database initialized successfully
+2026-03-12 15:30:44,076 - services.database - DEBUG - [DB_OP] Database initialization completed in 2.0162s
+2026-03-12 15:30:44,078 - services.mock_data - INFO - Processing mock data file products.json for table products
+2026-03-12 15:30:46,004 - services.mock_data - INFO - Table products already has 11 rows; skipping mock insert
+2026-03-12 15:30:46,062 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-12 15:30:46,062 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-12 15:30:46,062 - core.database - INFO - Starting database initialization...
+2026-03-12 15:30:46,063 - core.database - INFO - Database already initialized
+2026-03-12 15:30:46,063 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-12 15:30:46,063 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-12 15:30:46,063 - core.database - INFO - Tables already initialized
+2026-03-12 15:30:46,063 - services.database - INFO - 🔧 Table creation completed
+2026-03-12 15:30:46,063 - services.database - INFO - Database initialized successfully
+2026-03-12 15:30:46,063 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0011s
+2026-03-12 15:30:46,063 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-03-12 15:30:46,063 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-03-12 15:30:46,420 - services.auth - DEBUG - Admin user 1021803 already exists
+2026-03-12 15:30:46,478 - main - INFO - === Application startup completed successfully ===
+2026-03-12 15:32:45,028 - core.config - DEBUG - Read dynamic attribute jwt_secret_key from environment variable JWT_SECRET_KEY
+2026-03-12 15:32:45,028 - core.config - DEBUG - Read dynamic attribute jwt_algorithm from environment variable JWT_ALGORITHM
+2026-03-12 15:32:45,039 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:32:47,804 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:32:57,032 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:33:15,960 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-03-12 15:34:14,515 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-03-12 15:34:15,665 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:34:51,461 - services.database - DEBUG - [DB_OP] Starting database close
+2026-03-12 15:34:51,524 - core.database - INFO - Database connection closed and engine disposed
+2026-03-12 15:34:51,524 - services.database - INFO - Database connections closed
+2026-03-12 15:34:51,524 - services.database - DEBUG - [DB_OP] Database close completed in 0.0629s

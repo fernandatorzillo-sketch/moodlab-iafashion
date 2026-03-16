@@ -1,0 +1,65 @@
+{
+    "title": "curated_looks",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Foreign key to empresas"
+        },
+        "nome": {
+            "type": "string",
+            "description": "Look name"
+        },
+        "ocasiao": {
+            "type": "string",
+            "description": "Occasion: praia, viagem, jantar, resort, trabalho"
+        },
+        "estilo": {
+            "type": "string",
+            "description": "Style: casual, formal, resort, editorial"
+        },
+        "descricao_editorial": {
+            "type": "string",
+            "description": "Editorial description of the look"
+        },
+        "observacoes_marca": {
+            "type": "string",
+            "description": "Brand notes and observations"
+        },
+        "tags": {
+            "type": "string",
+            "description": "Comma-separated tags"
+        },
+        "prioridade": {
+            "type": "integer",
+            "description": "Priority order for recommendations"
+        },
+        "ativo": {
+            "type": "boolean",
+            "description": "Whether this look is active"
+        },
+        "tipo": {
+            "type": "string",
+            "description": "Type: look, editorial, campanha, vitrine"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "nome",
+        "user_id"
+    ]
+}

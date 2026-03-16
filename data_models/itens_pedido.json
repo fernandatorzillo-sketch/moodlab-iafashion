@@ -1,0 +1,44 @@
+{
+    "title": "itens_pedido",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "pedido_id": {
+            "type": "integer",
+            "description": "Order ID reference"
+        },
+        "produto_id": {
+            "type": "integer",
+            "description": "Product ID reference"
+        },
+        "sku": {
+            "type": "string",
+            "description": "Product SKU"
+        },
+        "quantidade": {
+            "type": "integer",
+            "description": "Quantity"
+        },
+        "preco_unitario": {
+            "type": "number",
+            "description": "Unit price"
+        },
+        "tamanho": {
+            "type": "string",
+            "description": "Size"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        }
+    },
+    "required": [
+        "id",
+        "pedido_id",
+        "produto_id",
+        "user_id"
+    ]
+}

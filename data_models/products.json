@@ -1,0 +1,49 @@
+{
+    "title": "products",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "name": {
+            "type": "string",
+            "description": "Product name"
+        },
+        "description": {
+            "type": "string",
+            "description": "Product description"
+        },
+        "price": {
+            "type": "number",
+            "description": "Product price"
+        },
+        "image_url": {
+            "type": "string",
+            "description": "Product image URL"
+        },
+        "category": {
+            "type": "string",
+            "description": "Category: tops, bottoms, shoes, accessories, outerwear, dresses"
+        },
+        "color": {
+            "type": "string",
+            "description": "Primary color"
+        },
+        "style_tags": {
+            "type": "string",
+            "description": "Comma-separated style tags like casual, formal, beach, resort"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "name",
+        "price",
+        "category"
+    ]
+}

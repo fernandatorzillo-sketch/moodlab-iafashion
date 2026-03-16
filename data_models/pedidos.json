@@ -1,0 +1,45 @@
+{
+    "title": "pedidos",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Company ID reference"
+        },
+        "cliente_id": {
+            "type": "integer",
+            "description": "Client ID reference"
+        },
+        "numero_pedido": {
+            "type": "string",
+            "description": "Order number"
+        },
+        "data_pedido": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Order date"
+        },
+        "valor_total": {
+            "type": "number",
+            "description": "Total value"
+        },
+        "status": {
+            "type": "string",
+            "description": "Order status"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "numero_pedido",
+        "user_id"
+    ]
+}

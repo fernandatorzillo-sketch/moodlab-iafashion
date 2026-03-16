@@ -1,0 +1,60 @@
+{
+    "title": "recommendation_logs",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Foreign key to empresas"
+        },
+        "cliente_id": {
+            "type": "integer",
+            "description": "Foreign key to clientes"
+        },
+        "look_id": {
+            "type": "integer",
+            "description": "Reference to curated or generated look"
+        },
+        "produtos_recomendados": {
+            "type": "string",
+            "description": "JSON array of recommended product IDs"
+        },
+        "ocasiao": {
+            "type": "string",
+            "description": "Occasion for the recommendation"
+        },
+        "fonte": {
+            "type": "string",
+            "description": "Source: ai, curadoria, hibrido"
+        },
+        "clicado": {
+            "type": "boolean",
+            "description": "Whether the recommendation was clicked"
+        },
+        "aprovado_marca": {
+            "type": "boolean",
+            "description": "Whether brand approved this recommendation"
+        },
+        "feedback": {
+            "type": "string",
+            "description": "Brand feedback on the recommendation"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "user_id"
+    ]
+}

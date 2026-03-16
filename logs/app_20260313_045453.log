@@ -1,0 +1,79 @@
+2026-03-13 04:54:53,916 - main - INFO - === Logging system initialized ===
+2026-03-13 04:54:53,916 - main - INFO - Log file: logs/app_20260313_045453.log
+2026-03-13 04:54:53,916 - main - INFO - Log level: INFO
+2026-03-13 04:54:53,916 - main - INFO - Timestamp: 20260313_045453
+2026-03-13 04:55:04,784 - main - INFO - Included router: routers.aihub.router
+2026-03-13 04:55:04,995 - main - INFO - Included router: routers.auth.router
+2026-03-13 04:55:05,145 - main - INFO - Included router: routers.brand_rules.router
+2026-03-13 04:55:05,386 - main - INFO - Included router: routers.brand_settings.router
+2026-03-13 04:55:05,546 - main - INFO - Included router: routers.clientes.router
+2026-03-13 04:55:05,690 - main - INFO - Included router: routers.closet_cliente.router
+2026-03-13 04:55:05,902 - main - INFO - Included router: routers.curated_look_items.router
+2026-03-13 04:55:06,023 - main - INFO - Included router: routers.curated_looks.router
+2026-03-13 04:55:06,157 - main - INFO - Included router: routers.empresas.router
+2026-03-13 04:55:06,429 - main - INFO - Included router: routers.engine.router
+2026-03-13 04:55:06,469 - main - INFO - Included router: routers.health.router
+2026-03-13 04:55:06,540 - main - INFO - Included router: routers.import_router.router
+2026-03-13 04:55:06,649 - main - INFO - Included router: routers.itens_pedido.router
+2026-03-13 04:55:06,749 - main - INFO - Included router: routers.outfit_recommendations.router
+2026-03-13 04:55:06,933 - main - INFO - Included router: routers.pedidos.router
+2026-03-13 04:55:07,111 - main - INFO - Included router: routers.products.router
+2026-03-13 04:55:07,360 - main - INFO - Included router: routers.produtos_empresa.router
+2026-03-13 04:55:07,460 - main - INFO - Included router: routers.purchases.router
+2026-03-13 04:55:07,584 - main - INFO - Included router: routers.recommendation_logs.router
+2026-03-13 04:55:07,626 - main - INFO - Included router: routers.settings.router
+2026-03-13 04:55:07,765 - main - INFO - Included router: routers.storage.router
+2026-03-13 04:55:07,867 - main - INFO - Included router: routers.style_preferences.router
+2026-03-13 04:55:07,934 - main - INFO - Included router: routers.user.router
+2026-03-13 04:55:07,935 - main - INFO - === Application startup initiated ===
+2026-03-13 04:55:07,936 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-13 04:55:07,936 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-13 04:55:07,937 - core.database - INFO - Starting database initialization...
+2026-03-13 04:55:07,937 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-03-13 04:55:07,937 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-03-13 04:55:07,938 - core.database - INFO - Creating async database engine...
+2026-03-13 04:55:07,939 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-03-13 04:55:08,560 - core.database - INFO - Database engine created successfully
+2026-03-13 04:55:08,560 - core.database - INFO - Creating async session maker...
+2026-03-13 04:55:08,560 - core.database - INFO - Async session maker created successfully
+2026-03-13 04:55:08,561 - core.database - INFO - Database connection initialized successfully
+2026-03-13 04:55:08,561 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-13 04:55:08,561 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-13 04:55:08,562 - core.database - INFO - 🔧 Starting table creation...
+2026-03-13 04:55:10,660 - core.database - INFO - Tables initialized successfully
+2026-03-13 04:55:10,661 - core.database - DEBUG - [DB_OP] Create tables completed in 2.0995s
+2026-03-13 04:55:10,719 - services.database - INFO - 🔧 Table creation completed
+2026-03-13 04:55:10,720 - services.database - INFO - Database initialized successfully
+2026-03-13 04:55:10,720 - services.database - DEBUG - [DB_OP] Database initialization completed in 2.7841s
+2026-03-13 04:55:10,722 - services.mock_data - INFO - Processing mock data file products.json for table products
+2026-03-13 04:55:12,644 - services.mock_data - INFO - Table products already has 11 rows; skipping mock insert
+2026-03-13 04:55:12,703 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-13 04:55:12,703 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-13 04:55:12,703 - core.database - INFO - Starting database initialization...
+2026-03-13 04:55:12,704 - core.database - INFO - Database already initialized
+2026-03-13 04:55:12,704 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-13 04:55:12,704 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-13 04:55:12,704 - core.database - INFO - Tables already initialized
+2026-03-13 04:55:12,704 - services.database - INFO - 🔧 Table creation completed
+2026-03-13 04:55:12,705 - services.database - INFO - Database initialized successfully
+2026-03-13 04:55:12,705 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0020s
+2026-03-13 04:55:12,705 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-03-13 04:55:12,705 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-03-13 04:55:13,068 - services.auth - DEBUG - Admin user 1021803 already exists
+2026-03-13 04:55:13,126 - main - INFO - === Application startup completed successfully ===
+2026-03-13 04:56:04,766 - core.config - DEBUG - Read dynamic attribute jwt_secret_key from environment variable JWT_SECRET_KEY
+2026-03-13 04:56:04,767 - core.config - DEBUG - Read dynamic attribute jwt_algorithm from environment variable JWT_ALGORITHM
+2026-03-13 04:56:04,935 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 04:56:08,928 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-03-13 04:56:09,073 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 04:58:29,229 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:07:39,442 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:13:41,927 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:18:14,456 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:22:17,953 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:29:39,524 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:34:39,276 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-13 05:37:56,105 - services.database - DEBUG - [DB_OP] Starting database close
+2026-03-13 05:37:56,106 - core.database - INFO - Database connection closed and engine disposed
+2026-03-13 05:37:56,106 - services.database - INFO - Database connections closed
+2026-03-13 05:37:56,106 - services.database - DEBUG - [DB_OP] Database close completed in 0.0015s

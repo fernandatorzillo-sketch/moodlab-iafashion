@@ -1,0 +1,93 @@
+2026-03-12 15:07:48,002 - main - INFO - === Logging system initialized ===
+2026-03-12 15:07:48,002 - main - INFO - Log file: logs/app_20260312_150748.log
+2026-03-12 15:07:48,002 - main - INFO - Log level: INFO
+2026-03-12 15:07:48,002 - main - INFO - Timestamp: 20260312_150748
+2026-03-12 15:07:48,729 - main - INFO - Included router: routers.aihub.router
+2026-03-12 15:07:48,746 - main - INFO - Included router: routers.auth.router
+2026-03-12 15:07:48,751 - main - INFO - Included router: routers.health.router
+2026-03-12 15:07:48,798 - main - INFO - Included router: routers.outfit_recommendations.router
+2026-03-12 15:07:48,947 - main - INFO - Included router: routers.products.router
+2026-03-12 15:07:48,992 - main - INFO - Included router: routers.purchases.router
+2026-03-12 15:07:49,011 - main - INFO - Included router: routers.settings.router
+2026-03-12 15:07:49,052 - main - INFO - Included router: routers.storage.router
+2026-03-12 15:07:49,100 - main - INFO - Included router: routers.style_preferences.router
+2026-03-12 15:07:49,109 - main - INFO - Included router: routers.user.router
+2026-03-12 15:07:49,111 - main - INFO - === Application startup initiated ===
+2026-03-12 15:07:49,111 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-12 15:07:49,111 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-12 15:07:49,112 - core.database - INFO - Starting database initialization...
+2026-03-12 15:07:49,112 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-03-12 15:07:49,112 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-03-12 15:07:49,113 - core.database - INFO - Creating async database engine...
+2026-03-12 15:07:49,114 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-03-12 15:07:49,196 - core.database - INFO - Database engine created successfully
+2026-03-12 15:07:49,196 - core.database - INFO - Creating async session maker...
+2026-03-12 15:07:49,196 - core.database - INFO - Async session maker created successfully
+2026-03-12 15:07:49,196 - core.database - INFO - Database connection initialized successfully
+2026-03-12 15:07:49,196 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-12 15:07:49,196 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-12 15:07:49,197 - core.database - INFO - 🔧 Starting table creation...
+2026-03-12 15:07:51,111 - core.database - INFO - Tables initialized successfully
+2026-03-12 15:07:51,111 - core.database - DEBUG - [DB_OP] Create tables completed in 1.9145s
+2026-03-12 15:07:51,170 - services.database - INFO - 🔧 Table creation completed
+2026-03-12 15:07:51,170 - services.database - INFO - Database initialized successfully
+2026-03-12 15:07:51,170 - services.database - DEBUG - [DB_OP] Database initialization completed in 2.0593s
+2026-03-12 15:07:51,171 - services.mock_data - INFO - Processing mock data file products.json for table products
+2026-03-12 15:07:53,264 - services.mock_data - INFO - Table products already has 11 rows; skipping mock insert
+2026-03-12 15:07:53,323 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-12 15:07:53,323 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-12 15:07:53,323 - core.database - INFO - Starting database initialization...
+2026-03-12 15:07:53,324 - core.database - INFO - Database already initialized
+2026-03-12 15:07:53,324 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-12 15:07:53,324 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-12 15:07:53,324 - core.database - INFO - Tables already initialized
+2026-03-12 15:07:53,324 - services.database - INFO - 🔧 Table creation completed
+2026-03-12 15:07:53,324 - services.database - INFO - Database initialized successfully
+2026-03-12 15:07:53,324 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0016s
+2026-03-12 15:07:53,325 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-03-12 15:07:53,325 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-03-12 15:07:53,685 - services.auth - DEBUG - Admin user 1021803 already exists
+2026-03-12 15:07:53,744 - main - INFO - === Application startup completed successfully ===
+2026-03-12 15:07:57,182 - core.config - DEBUG - Read dynamic attribute jwt_secret_key from environment variable JWT_SECRET_KEY
+2026-03-12 15:07:57,182 - core.config - DEBUG - Read dynamic attribute jwt_algorithm from environment variable JWT_ALGORITHM
+2026-03-12 15:07:57,191 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:12:47,643 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:12:47,856 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:12:48,086 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:12:48,086 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-03-12 15:12:48,086 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0004s
+2026-03-12 15:12:48,087 - routers.purchases - DEBUG - Querying purchasess: query={}, sort=None, skip=0, limit=200, fields=None
+2026-03-12 15:12:48,564 - routers.purchases - DEBUG - Found 0 purchasess
+2026-03-12 15:12:48,564 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.4783s
+2026-03-12 15:15:12,464 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:16:42,905 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:16:42,909 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-03-12 15:16:42,910 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0006s
+2026-03-12 15:16:42,911 - routers.products - DEBUG - Querying productss: query={}, sort=-created_at, skip=0, limit=50, fields=None
+2026-03-12 15:16:43,104 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:16:43,293 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:16:43,293 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-03-12 15:16:43,294 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0003s
+2026-03-12 15:16:43,294 - routers.purchases - DEBUG - Querying purchasess: query={}, sort=None, skip=0, limit=100, fields=None
+2026-03-12 15:16:43,694 - routers.products - DEBUG - Found 11 productss
+2026-03-12 15:16:43,695 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.7859s
+2026-03-12 15:16:43,992 - routers.purchases - DEBUG - Found 0 purchasess
+2026-03-12 15:16:43,993 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.6993s
+2026-03-12 15:16:59,403 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:16:59,403 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-03-12 15:16:59,404 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0002s
+2026-03-12 15:16:59,404 - routers.purchases - DEBUG - Creating new purchases with data: product_id=10 purchased_at=datetime.datetime(2026, 3, 12, 22, 32, 55)
+2026-03-12 15:17:00,260 - services.purchases - INFO - Created purchases with id: 1
+2026-03-12 15:17:00,261 - routers.purchases - INFO - Purchases created successfully with id: 1
+2026-03-12 15:17:00,261 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.8579s
+2026-03-12 15:17:07,283 - core.auth - DEBUG - Authentication token validated for user hash: 3e1bb2c4
+2026-03-12 15:17:07,284 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-03-12 15:17:07,284 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0002s
+2026-03-12 15:17:07,284 - routers.purchases - DEBUG - Creating new purchases with data: product_id=9 purchased_at=datetime.datetime(2026, 3, 12, 22, 33, 3)
+2026-03-12 15:17:07,926 - services.purchases - INFO - Created purchases with id: 2
+2026-03-12 15:17:07,927 - routers.purchases - INFO - Purchases created successfully with id: 2
+2026-03-12 15:17:07,927 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.6438s
+2026-03-12 15:22:06,407 - services.database - DEBUG - [DB_OP] Starting database close
+2026-03-12 15:22:06,532 - core.database - INFO - Database connection closed and engine disposed
+2026-03-12 15:22:06,532 - services.database - INFO - Database connections closed
+2026-03-12 15:22:06,533 - services.database - DEBUG - [DB_OP] Database close completed in 0.1252s

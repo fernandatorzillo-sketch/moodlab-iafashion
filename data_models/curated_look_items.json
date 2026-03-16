@@ -1,0 +1,36 @@
+{
+    "title": "curated_look_items",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "look_id": {
+            "type": "integer",
+            "description": "Foreign key to curated_looks"
+        },
+        "produto_id": {
+            "type": "integer",
+            "description": "Foreign key to produtos_empresa"
+        },
+        "ordem": {
+            "type": "integer",
+            "description": "Order/priority of piece in the look"
+        },
+        "obrigatorio": {
+            "type": "boolean",
+            "description": "Whether this item is mandatory in the look"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "look_id",
+        "produto_id",
+        "user_id"
+    ]
+}

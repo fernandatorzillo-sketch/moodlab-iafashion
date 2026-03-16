@@ -1,0 +1,112 @@
+[
+    {
+        "name": "White Linen Shirt",
+        "description": "Elegant white linen shirt, perfect for beach days and casual outings. Breathable fabric with a relaxed fit.",
+        "price": 89.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/936a8359-be70-40ca-b2dd-7421ef8d304c.png",
+        "category": "tops",
+        "color": "white",
+        "style_tags": "casual,beach,resort,travel",
+        "created_at": "2026-03-01 10:00:00"
+    },
+    {
+        "name": "Navy Tailored Blazer",
+        "description": "Sophisticated navy blue blazer with structured shoulders. Ideal for dinner events and professional settings.",
+        "price": 245.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/94f6b28e-cbd7-47c5-8536-c38ab7461612.png",
+        "category": "outerwear",
+        "color": "navy",
+        "style_tags": "formal,dinner,travel",
+        "created_at": "2026-03-01 10:00:00"
+    },
+    {
+        "name": "Coral Maxi Dress",
+        "description": "Flowy coral maxi dress with a flattering silhouette. Perfect for beach vacations and resort getaways.",
+        "price": 165.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/38738d00-df6b-48dc-b312-b427b2381bec.png",
+        "category": "dresses",
+        "color": "coral",
+        "style_tags": "beach,resort,casual,travel",
+        "created_at": "2026-03-02 10:00:00"
+    },
+    {
+        "name": "Black Ankle Boots",
+        "description": "Classic black leather ankle boots with a sleek design. Versatile footwear for any occasion.",
+        "price": 195.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/c3e67e01-0a39-4987-8e37-85c34285ff00.png",
+        "category": "shoes",
+        "color": "black",
+        "style_tags": "formal,dinner,travel,casual",
+        "created_at": "2026-03-02 10:00:00"
+    },
+    {
+        "name": "Gold Statement Necklace",
+        "description": "Geometric gold statement necklace that adds elegance to any outfit. Perfect for dinner and resort evenings.",
+        "price": 125.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/e8bfa31b-5d80-4eac-9f8c-6ee0e4086979.png",
+        "category": "accessories",
+        "color": "gold",
+        "style_tags": "formal,dinner,resort",
+        "created_at": "2026-03-03 10:00:00"
+    },
+    {
+        "name": "Beige Wide-Leg Trousers",
+        "description": "High-waisted beige wide-leg trousers with a flowing silhouette. Elegant and comfortable for any occasion.",
+        "price": 135.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/e54cd27a-aba8-47b1-88d0-f18777d4fcb3.png",
+        "category": "bottoms",
+        "color": "beige",
+        "style_tags": "casual,travel,resort,dinner",
+        "created_at": "2026-03-03 10:00:00"
+    },
+    {
+        "name": "Straw Sun Hat",
+        "description": "Stylish straw sun hat with black ribbon detail. Essential accessory for beach and resort vacations.",
+        "price": 65.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/45d25066-50ae-4ba6-8ce0-0fb343940d61.png",
+        "category": "accessories",
+        "color": "beige",
+        "style_tags": "beach,resort,travel,casual",
+        "created_at": "2026-03-04 10:00:00"
+    },
+    {
+        "name": "Emerald Silk Blouse",
+        "description": "Luxurious emerald green silk blouse for elegant evening wear. A statement piece for dinner occasions.",
+        "price": 175.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/bda4835f-5df9-4971-b2dd-8c19adecd3e4.png",
+        "category": "tops",
+        "color": "green",
+        "style_tags": "formal,dinner,resort",
+        "created_at": "2026-03-04 10:00:00"
+    },
+    {
+        "name": "Cashmere Sweater",
+        "description": "Soft beige cashmere sweater for cozy elegance. Perfect for travel and casual dinner outings.",
+        "price": 210.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/28546b67-3359-463b-b7d7-12f53cc79f5d.png",
+        "category": "tops",
+        "color": "beige",
+        "style_tags": "casual,travel,dinner",
+        "created_at": "2026-03-05 10:00:00"
+    },
+    {
+        "name": "Dark Denim Jeans",
+        "description": "Slim fit dark denim jeans with a modern cut. A wardrobe essential for casual and travel looks.",
+        "price": 120.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/576b16df-428e-4f60-ad42-b88b01e0281e.png",
+        "category": "bottoms",
+        "color": "blue",
+        "style_tags": "casual,travel",
+        "created_at": "2026-03-05 10:00:00"
+    },
+    {
+        "name": "Nude Leather Handbag",
+        "description": "Elegant nude leather crossbody handbag with designer styling. Versatile accessory for any occasion.",
+        "price": 285.0,
+        "image_url": "https://mgx-backend-cdn.metadl.com/generate/images/1021619/2026-03-12/fdcd09db-e95a-44d2-b906-8df8bd6e9b2a.png",
+        "category": "accessories",
+        "color": "nude",
+        "style_tags": "formal,dinner,travel,resort,casual",
+        "created_at": "2026-03-06 10:00:00"
+    }
+]

@@ -1,0 +1,69 @@
+{
+    "title": "clientes",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Company ID reference"
+        },
+        "nome": {
+            "type": "string",
+            "description": "Client name"
+        },
+        "email": {
+            "type": "string",
+            "description": "Client email"
+        },
+        "telefone": {
+            "type": "string",
+            "description": "Phone number"
+        },
+        "genero": {
+            "type": "string",
+            "description": "Gender"
+        },
+        "cidade": {
+            "type": "string",
+            "description": "City"
+        },
+        "estado": {
+            "type": "string",
+            "description": "State"
+        },
+        "data_cadastro": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Registration date"
+        },
+        "estilo_resumo": {
+            "type": "string",
+            "description": "Style summary"
+        },
+        "tamanho_top": {
+            "type": "string",
+            "description": "Top size"
+        },
+        "tamanho_bottom": {
+            "type": "string",
+            "description": "Bottom size"
+        },
+        "tamanho_dress": {
+            "type": "string",
+            "description": "Dress size"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "nome",
+        "user_id"
+    ]
+}

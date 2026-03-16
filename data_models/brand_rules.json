@@ -1,0 +1,44 @@
+{
+    "title": "brand_rules",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Foreign key to empresas"
+        },
+        "rule_type": {
+            "type": "string",
+            "description": "Type: priorizar_estoque, priorizar_margem, priorizar_lancamentos, evitar_combinacao, priorizar_categoria, priorizar_colecao"
+        },
+        "rule_value": {
+            "type": "string",
+            "description": "Rule value or configuration JSON"
+        },
+        "descricao": {
+            "type": "string",
+            "description": "Human-readable description"
+        },
+        "ativo": {
+            "type": "boolean",
+            "description": "Whether this rule is active"
+        },
+        "prioridade": {
+            "type": "integer",
+            "description": "Priority weight 1-10"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "rule_type",
+        "user_id"
+    ]
+}

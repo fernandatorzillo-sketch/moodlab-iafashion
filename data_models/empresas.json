@@ -1,0 +1,45 @@
+{
+    "title": "empresas",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "nome_empresa": {
+            "type": "string",
+            "description": "Company name"
+        },
+        "email_admin": {
+            "type": "string",
+            "description": "Admin email"
+        },
+        "plataforma_ecommerce": {
+            "type": "string",
+            "description": "E-commerce platform (Shopify, WooCommerce, etc.)"
+        },
+        "erp": {
+            "type": "string",
+            "description": "ERP system name"
+        },
+        "crm": {
+            "type": "string",
+            "description": "CRM system name"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "nome_empresa",
+        "email_admin",
+        "user_id"
+    ]
+}

@@ -1,0 +1,87 @@
+{
+    "title": "brand_settings",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Foreign key to empresas"
+        },
+        "logo_url": {
+            "type": "string",
+            "description": "Brand logo URL"
+        },
+        "brand_name": {
+            "type": "string",
+            "description": "Display name for the module"
+        },
+        "primary_color": {
+            "type": "string",
+            "description": "Primary brand color hex"
+        },
+        "secondary_color": {
+            "type": "string",
+            "description": "Secondary brand color hex"
+        },
+        "background_color": {
+            "type": "string",
+            "description": "Background color hex"
+        },
+        "text_color": {
+            "type": "string",
+            "description": "Text color hex"
+        },
+        "font_family": {
+            "type": "string",
+            "description": "Typography font family"
+        },
+        "button_style": {
+            "type": "string",
+            "description": "Button style: rounded, square, pill"
+        },
+        "border_radius": {
+            "type": "string",
+            "description": "Border radius value"
+        },
+        "display_mode": {
+            "type": "string",
+            "description": "Mode: minimal, premium, editorial"
+        },
+        "tone_of_voice": {
+            "type": "string",
+            "description": "Brand tone description for AI"
+        },
+        "aesthetic_description": {
+            "type": "string",
+            "description": "Brand aesthetic e.g. resort sofisticado, casual chic"
+        },
+        "module_name_closet": {
+            "type": "string",
+            "description": "Custom name for closet module"
+        },
+        "module_name_looks": {
+            "type": "string",
+            "description": "Custom name for looks module"
+        },
+        "module_name_recommendations": {
+            "type": "string",
+            "description": "Custom name for recommendations module"
+        },
+        "banner_url": {
+            "type": "string",
+            "description": "Cover banner image URL"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "user_id"
+    ]
+}

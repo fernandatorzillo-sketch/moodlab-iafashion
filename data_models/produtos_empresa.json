@@ -1,0 +1,85 @@
+{
+    "title": "produtos_empresa",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "empresa_id": {
+            "type": "integer",
+            "description": "Company ID reference"
+        },
+        "sku": {
+            "type": "string",
+            "description": "Product SKU"
+        },
+        "nome": {
+            "type": "string",
+            "description": "Product name"
+        },
+        "categoria": {
+            "type": "string",
+            "description": "Category"
+        },
+        "subcategoria": {
+            "type": "string",
+            "description": "Subcategory"
+        },
+        "colecao": {
+            "type": "string",
+            "description": "Collection"
+        },
+        "cor": {
+            "type": "string",
+            "description": "Color"
+        },
+        "modelagem": {
+            "type": "string",
+            "description": "Fit/modeling"
+        },
+        "tamanho": {
+            "type": "string",
+            "description": "Size"
+        },
+        "preco": {
+            "type": "number",
+            "description": "Price"
+        },
+        "estoque": {
+            "type": "integer",
+            "description": "Stock quantity"
+        },
+        "imagem_url": {
+            "type": "string",
+            "description": "Image URL"
+        },
+        "link_produto": {
+            "type": "string",
+            "description": "Product link"
+        },
+        "ocasiao": {
+            "type": "string",
+            "description": "Occasion"
+        },
+        "tags_estilo": {
+            "type": "string",
+            "description": "Style tags comma separated"
+        },
+        "ativo": {
+            "type": "boolean",
+            "description": "Active status"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Owner user ID"
+        }
+    },
+    "required": [
+        "id",
+        "empresa_id",
+        "sku",
+        "nome",
+        "user_id"
+    ]
+}

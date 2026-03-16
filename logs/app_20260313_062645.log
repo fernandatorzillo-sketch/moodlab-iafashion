@@ -1,0 +1,69 @@
+2026-03-13 06:26:45,292 - main - INFO - === Logging system initialized ===
+2026-03-13 06:26:45,292 - main - INFO - Log file: logs/app_20260313_062645.log
+2026-03-13 06:26:45,292 - main - INFO - Log level: INFO
+2026-03-13 06:26:45,292 - main - INFO - Timestamp: 20260313_062645
+2026-03-13 06:26:46,254 - main - INFO - Included router: routers.aihub.router
+2026-03-13 06:26:46,277 - main - INFO - Included router: routers.auth.router
+2026-03-13 06:26:46,336 - main - INFO - Included router: routers.brand_rules.router
+2026-03-13 06:26:46,509 - main - INFO - Included router: routers.brand_settings.router
+2026-03-13 06:26:46,571 - main - INFO - Included router: routers.clientes.router
+2026-03-13 06:26:46,618 - main - INFO - Included router: routers.closet_cliente.router
+2026-03-13 06:26:46,674 - main - INFO - Included router: routers.curated_look_items.router
+2026-03-13 06:26:46,747 - main - INFO - Included router: routers.curated_looks.router
+2026-03-13 06:26:46,806 - main - INFO - Included router: routers.empresas.router
+2026-03-13 06:26:46,849 - main - INFO - Included router: routers.engine.router
+2026-03-13 06:26:46,854 - main - INFO - Included router: routers.health.router
+2026-03-13 06:26:46,893 - main - INFO - Included router: routers.import_router.router
+2026-03-13 06:26:46,946 - main - INFO - Included router: routers.itens_pedido.router
+2026-03-13 06:26:47,012 - main - INFO - Included router: routers.outfit_recommendations.router
+2026-03-13 06:26:47,066 - main - INFO - Included router: routers.pedidos.router
+2026-03-13 06:26:47,084 - main - INFO - Included router: routers.price_router.router
+2026-03-13 06:26:47,411 - main - INFO - Included router: routers.products.router
+2026-03-13 06:26:47,492 - main - INFO - Included router: routers.produtos_empresa.router
+2026-03-13 06:26:47,544 - main - INFO - Included router: routers.purchases.router
+2026-03-13 06:26:47,602 - main - INFO - Included router: routers.recommendation_logs.router
+2026-03-13 06:26:47,630 - main - INFO - Included router: routers.settings.router
+2026-03-13 06:26:47,644 - main - INFO - Included router: routers.stock_router.router
+2026-03-13 06:26:47,685 - main - INFO - Included router: routers.storage.router
+2026-03-13 06:26:47,737 - main - INFO - Included router: routers.style_preferences.router
+2026-03-13 06:26:47,748 - main - INFO - Included router: routers.user.router
+2026-03-13 06:26:47,749 - main - INFO - === Application startup initiated ===
+2026-03-13 06:26:47,750 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-13 06:26:47,750 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-13 06:26:47,750 - core.database - INFO - Starting database initialization...
+2026-03-13 06:26:47,750 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-03-13 06:26:47,750 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-03-13 06:26:47,751 - core.database - INFO - Creating async database engine...
+2026-03-13 06:26:47,751 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-03-13 06:26:47,789 - core.database - INFO - Database engine created successfully
+2026-03-13 06:26:47,790 - core.database - INFO - Creating async session maker...
+2026-03-13 06:26:47,790 - core.database - INFO - Async session maker created successfully
+2026-03-13 06:26:47,790 - core.database - INFO - Database connection initialized successfully
+2026-03-13 06:26:47,790 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-13 06:26:47,790 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-13 06:26:47,790 - core.database - INFO - 🔧 Starting table creation...
+2026-03-13 06:26:49,881 - core.database - INFO - Tables initialized successfully
+2026-03-13 06:26:49,881 - core.database - DEBUG - [DB_OP] Create tables completed in 2.0914s
+2026-03-13 06:26:49,940 - services.database - INFO - 🔧 Table creation completed
+2026-03-13 06:26:49,940 - services.database - INFO - Database initialized successfully
+2026-03-13 06:26:49,940 - services.database - DEBUG - [DB_OP] Database initialization completed in 2.1906s
+2026-03-13 06:26:49,941 - services.mock_data - INFO - Processing mock data file products.json for table products
+2026-03-13 06:26:51,852 - services.mock_data - INFO - Table products already has 11 rows; skipping mock insert
+2026-03-13 06:26:51,911 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-03-13 06:26:51,911 - services.database - INFO - 🔧 Starting database initialization...
+2026-03-13 06:26:51,911 - core.database - INFO - Starting database initialization...
+2026-03-13 06:26:51,911 - core.database - INFO - Database already initialized
+2026-03-13 06:26:51,911 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-03-13 06:26:51,911 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-03-13 06:26:51,911 - core.database - INFO - Tables already initialized
+2026-03-13 06:26:51,911 - services.database - INFO - 🔧 Table creation completed
+2026-03-13 06:26:51,911 - services.database - INFO - Database initialized successfully
+2026-03-13 06:26:51,912 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0010s
+2026-03-13 06:26:51,912 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-03-13 06:26:51,912 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-03-13 06:26:52,275 - services.auth - DEBUG - Admin user 1021803 already exists
+2026-03-13 06:26:52,333 - main - INFO - === Application startup completed successfully ===
+2026-03-13 06:26:52,435 - services.database - DEBUG - [DB_OP] Starting database close
+2026-03-13 06:26:52,496 - core.database - INFO - Database connection closed and engine disposed
+2026-03-13 06:26:52,497 - services.database - INFO - Database connections closed
+2026-03-13 06:26:52,497 - services.database - DEBUG - [DB_OP] Database close completed in 0.0622s
