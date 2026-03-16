@@ -1,0 +1,32 @@
+{
+    "title": "outfit_recommendations",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "occasion": {
+            "type": "string",
+            "description": "Occasion type: beach, travel, dinner, resort"
+        },
+        "recommendation": {
+            "type": "string",
+            "description": "JSON string of recommended outfit with product IDs and explanation"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "occasion"
+    ]
+}

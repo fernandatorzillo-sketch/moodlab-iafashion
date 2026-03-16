@@ -1,0 +1,35 @@
+{
+    "title": "style_preferences",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "preferred_colors": {
+            "type": "string",
+            "description": "Comma-separated preferred colors"
+        },
+        "preferred_styles": {
+            "type": "string",
+            "description": "Comma-separated preferred styles"
+        },
+        "preferred_occasions": {
+            "type": "string",
+            "description": "Comma-separated preferred occasions"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id"
+    ]
+}

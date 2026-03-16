@@ -1,0 +1,28 @@
+{
+    "title": "purchases",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "product_id": {
+            "type": "integer",
+            "description": "Product ID"
+        },
+        "purchased_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Purchase timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "product_id"
+    ]
+}
