@@ -1,0 +1,18 @@
+[
+  {
+    "product_id": "data",
+    "error": "Erro VTEX 404 em https://lojaaguadecoco.vtexcommercestable.com.br/api/catalog/pvt/product/data: ",
+    "raw": {
+      "product_id": "data",
+      "sku_ids": []
+    }
+  },
+  {
+    "product_id": "range",
+    "error": "Erro VTEX 404 em https://lojaaguadecoco.vtexcommercestable.com.br/api/catalog/pvt/product/range: ",
+    "raw": {
+      "product_id": "range",
+      "sku_ids": []
+    }
+  }
+]

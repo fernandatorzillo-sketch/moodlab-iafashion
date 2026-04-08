@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "empresa_id": 1,
+    "plataforma": "vtex",
+    "account_name": "lojaaguadecoco",
+    "environment": "vtexcommercestable",
+    "app_key": "vtexappkey-lojaaguadecoco-RWZQRN",
+    "app_token": "YXBpa2V5X2NyZWF0aW9ufGM0YWM1YmQ1LWI0MWEtNDA3Mi1hOGZiLTRlZWE4NDI5NjIyZnxpWE5uX3EzR05IQldFcmlzVVRGM3g0NnA5d2JVOUtWYUFkNUhmbkoyLTNCQ0ZtMmx4RS1lY1lnUHg3aHJnT19Ga1l4RVd5UjFYVGpjdWF4UmVQdlo4UTVBd2V5UmhXTWgyR082bnVGUTl1Rk5PaXFaM0t4RkdHNmZHMXZfYURfdm9nS293bFk1MlRpZEg0OUF4c0JHYTRXcy1EQmVybUNsdWtSQ0dVOGJLVlk",
+    "ativa": true,
+    "created_at": "2026-03-30T00:00:00"
+  }
+]

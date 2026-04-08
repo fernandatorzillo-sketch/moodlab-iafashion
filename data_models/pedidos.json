@@ -1,45 +1,137 @@
-{
-    "title": "pedidos",
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "integer",
-            "description": "Primary key, auto-increment"
-        },
-        "empresa_id": {
-            "type": "integer",
-            "description": "Company ID reference"
-        },
-        "cliente_id": {
-            "type": "integer",
-            "description": "Client ID reference"
-        },
-        "numero_pedido": {
-            "type": "string",
-            "description": "Order number"
-        },
-        "data_pedido": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Order date"
-        },
-        "valor_total": {
-            "type": "number",
-            "description": "Total value"
-        },
-        "status": {
-            "type": "string",
-            "description": "Order status"
-        },
-        "user_id": {
-            "type": "string",
-            "description": "Owner user ID"
-        }
-    },
-    "required": [
-        "id",
-        "empresa_id",
-        "numero_pedido",
-        "user_id"
-    ]
-}
+[
+  {
+    "order_id": "1621500772835-01",
+    "creation_date": "2026-03-31T13:35:04.1763322+00:00",
+    "status": "payment-approved",
+    "client_email": "amandafbsouza@gmail.com",
+    "client_name": "Amanda",
+    "total_value": 59013,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772832-01",
+    "creation_date": "2026-03-31T13:24:26.3183199+00:00",
+    "status": "payment-approved",
+    "client_email": "dezzamarnet@gmail.com",
+    "client_name": "Andreza ",
+    "total_value": 164700,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772831-01",
+    "creation_date": "2026-03-31T13:12:27.7997637+00:00",
+    "status": "payment-approved",
+    "client_email": "marketing@marthamedeiros.com.br-266900902559b.ct.vtex.com.br",
+    "client_name": "Gelio",
+    "total_value": 6908,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-03",
+    "creation_date": "2026-03-31T12:53:52.2979437+00:00",
+    "status": "payment-approved",
+    "client_email": "jujuliana.mayara07@gmail.com",
+    "client_name": "Juliana ",
+    "total_value": 75499,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-02",
+    "creation_date": "2026-03-31T12:53:52.2978513+00:00",
+    "status": "payment-approved",
+    "client_email": "jujuliana.mayara07@gmail.com",
+    "client_name": "Juliana ",
+    "total_value": 32899,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-01",
+    "creation_date": "2026-03-31T12:53:52.2977104+00:00",
+    "status": "payment-approved",
+    "client_email": "jujuliana.mayara07@gmail.com",
+    "client_name": "Juliana ",
+    "total_value": 31119,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621471751715-01",
+    "creation_date": "2026-03-31T12:41:08.3956972+00:00",
+    "status": "handling",
+    "client_email": "5294d351b729435ba4e2878db2d4d19b@ct.vtex.com.br",
+    "client_name": "Elaine",
+    "total_value": 44900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772824-01",
+    "creation_date": "2026-03-31T12:22:52.7180609+00:00",
+    "status": "payment-approved",
+    "client_email": "sideliabontempo@yahoo.com.br-268500902625b.ct.vtex.com.br",
+    "client_name": "Sidelia",
+    "total_value": 41209,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-01",
+    "creation_date": "2026-03-31T12:04:15.4347085+00:00",
+    "status": "payment-approved",
+    "client_email": "shirleyanastacio8@gmail.com",
+    "client_name": "Shirley ",
+    "total_value": 78030,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-02",
+    "creation_date": "2026-03-31T12:04:15.4349303+00:00",
+    "status": "payment-approved",
+    "client_email": "shirleyanastacio8@gmail.com",
+    "client_name": "Shirley ",
+    "total_value": 53730,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772821-01",
+    "creation_date": "2026-03-31T11:46:37.1960366+00:00",
+    "status": "payment-approved",
+    "client_email": "fiuza_t@hotmail.com",
+    "client_name": "Thayza",
+    "total_value": 5562,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621470772820-01",
+    "creation_date": "2026-03-31T10:59:12.5284549+00:00",
+    "status": "payment-approved",
+    "client_email": "adm_rafaelamonteiro@hotmail.com",
+    "client_name": "Rafaela",
+    "total_value": 49743,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621461751668-01",
+    "creation_date": "2026-03-31T10:11:00.8491225+00:00",
+    "status": "handling",
+    "client_email": "90d5cc3b545b4feaab63d70def48670b@ct.vtex.com.br",
+    "client_name": "Rommeljosebezerra",
+    "total_value": 150500,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621460772818-01",
+    "creation_date": "2026-03-31T10:01:43.2285053+00:00",
+    "status": "payment-approved",
+    "client_email": "carlinhos_luciana@hotmail.com",
+    "client_name": "Luciana",
+    "total_value": 68609,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621450772814-03",
+    "creation_date": "2026-03-31T09:05:49.2097140+00:00",
+    "status": "payment-approved",
+    "client_email": "thisfbar@gmail.com",
+    "client_name": "Thiago",
+    "total_value": 67950,
+    "empresa_id": 1
+  }
+]

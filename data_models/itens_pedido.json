@@ -1,44 +1,245 @@
-{
-    "title": "itens_pedido",
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "integer",
-            "description": "Primary key, auto-increment"
-        },
-        "pedido_id": {
-            "type": "integer",
-            "description": "Order ID reference"
-        },
-        "produto_id": {
-            "type": "integer",
-            "description": "Product ID reference"
-        },
-        "sku": {
-            "type": "string",
-            "description": "Product SKU"
-        },
-        "quantidade": {
-            "type": "integer",
-            "description": "Quantity"
-        },
-        "preco_unitario": {
-            "type": "number",
-            "description": "Unit price"
-        },
-        "tamanho": {
-            "type": "string",
-            "description": "Size"
-        },
-        "user_id": {
-            "type": "string",
-            "description": "Owner user ID"
-        }
-    },
-    "required": [
-        "id",
-        "pedido_id",
-        "produto_id",
-        "user_id"
-    ]
-}
+[
+  {
+    "order_id": "1621500772835-01",
+    "sku_id": "5004566",
+    "product_id": "143920",
+    "name": "Sandália Rasteira Jeri Saturno DOURADO/GOLDEN 36",
+    "quantity": 1,
+    "selling_price": 57510,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772832-01",
+    "sku_id": "5003552",
+    "product_id": "143721",
+    "name": "Vestido Curto Leveza Off White OFF WHITE/OFF WHITE M/M",
+    "quantity": 1,
+    "selling_price": 64900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772832-01",
+    "sku_id": "403571",
+    "product_id": "141040",
+    "name": "Vestido Curto Orquídea Preto PRETO/BLACK M/M",
+    "quantity": 1,
+    "selling_price": 49900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772832-01",
+    "sku_id": "403668",
+    "product_id": "141093",
+    "name": "Vestido Curto Orquidea Off White OFF WHITE/OFF WHITE M/M",
+    "quantity": 1,
+    "selling_price": 49900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772831-01",
+    "sku_id": "291650",
+    "product_id": "97191",
+    "name": "Castiçal Coral Resina VERMELHO/RED U/ONE SIZE",
+    "quantity": 1,
+    "selling_price": 5900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-03",
+    "sku_id": "5008321",
+    "product_id": "144783",
+    "name": "Saia Longa Malta Rosa ROSA/PINK P/S",
+    "quantity": 1,
+    "selling_price": 69800,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-02",
+    "sku_id": "5008233",
+    "product_id": "144761",
+    "name": "Biquíni Calcinha Lacinho Ostras Rosa ROSA/PINK G/L",
+    "quantity": 1,
+    "selling_price": 29900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621490772827-01",
+    "sku_id": "5008243",
+    "product_id": "144762",
+    "name": "Biquíni Sutiã Cortininha Ostras Rosa ROSA/PINK M/M",
+    "quantity": 1,
+    "selling_price": 29900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621471751715-01",
+    "sku_id": "5003661",
+    "product_id": "143750",
+    "name": "Macacão Longo Damasco Laranja LARANJA/ORANGE G/L",
+    "quantity": 1,
+    "selling_price": 42974,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772824-01",
+    "sku_id": "400493",
+    "product_id": "139491",
+    "name": "Chemise Curto Poá Color VERDE/GREEN M/M",
+    "quantity": 1,
+    "selling_price": 38900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-01",
+    "sku_id": "5014823",
+    "product_id": "146098",
+    "name": "Biquíni Sutiã Cortininha Lina Pérolas PRETO/BLACK M/M",
+    "quantity": 1,
+    "selling_price": 20610,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-01",
+    "sku_id": "5006412",
+    "product_id": "144358",
+    "name": "Biquíni Sutiã Cortininha Tecelagem Azul AZUL/BLUE M/M",
+    "quantity": 1,
+    "selling_price": 25110,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-01",
+    "sku_id": "5012467",
+    "product_id": "145618",
+    "name": "Saia Curta Floral Icaraí OFF WHITE/OFF WHITE P/S",
+    "quantity": 1,
+    "selling_price": 32310,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-02",
+    "sku_id": "5012723",
+    "product_id": "145664",
+    "name": "Biquíni Calcinha Lacinho Lina Pérolas PRETO/BLACK M/M",
+    "quantity": 1,
+    "selling_price": 18810,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-02",
+    "sku_id": "5005029",
+    "product_id": "144013",
+    "name": "Boné Aba Média Acessórios Rústicos BEGE/BEIGE U/ONE SIZE",
+    "quantity": 1,
+    "selling_price": 16110,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772822-02",
+    "sku_id": "5006251",
+    "product_id": "144323",
+    "name": "Biquíni Calcinha Lateral Fixa Tecelagem Azul AZUL/BLUE M/M",
+    "quantity": 1,
+    "selling_price": 18810,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621480772821-01",
+    "sku_id": "372284",
+    "product_id": "127756",
+    "name": "Biquíni Calcinha Asa Delta Anatômica Melgueira ROSA/PINK G/L",
+    "quantity": 1,
+    "selling_price": 3900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621470772820-01",
+    "sku_id": "377974",
+    "product_id": "130558",
+    "name": "Vestido Midi Ombro Só Helicônia VERDE/GREEN M/M",
+    "quantity": 1,
+    "selling_price": 47900,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621461751668-01",
+    "sku_id": "5007388",
+    "product_id": "144535",
+    "name": "Maiô Alça Fênix VERMELHO/RED M/M",
+    "quantity": 1,
+    "selling_price": 29544,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621461751668-01",
+    "sku_id": "5006155",
+    "product_id": "144310",
+    "name": "Maiô Frente Única Duo AZUL/BLUE M/M",
+    "quantity": 1,
+    "selling_price": 28052,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621461751668-01",
+    "sku_id": "5010415",
+    "product_id": "145211",
+    "name": "Vestido Midi Ares Laranja LARANJA/ORANGE P/S",
+    "quantity": 1,
+    "selling_price": 71759,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "PRV-1621461751668-01",
+    "sku_id": "248263",
+    "product_id": "77591",
+    "name": "Vaso Cacto AZUL.ESCURO U/ONE SIZE",
+    "quantity": 2,
+    "selling_price": 848,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621460772818-01",
+    "sku_id": "5015396",
+    "product_id": "146227",
+    "name": "Vestido Curto Morangos VERMELHO/RED P/S",
+    "quantity": 1,
+    "selling_price": 62910,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621450772814-03",
+    "sku_id": "395948",
+    "product_id": "137583",
+    "name": "Camisa Manga Curta Floral Rabisco BEGE/BEIGE M/M",
+    "quantity": 1,
+    "selling_price": 17910,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621450772814-03",
+    "sku_id": "5007958",
+    "product_id": "144660",
+    "name": "Camisa Polo Rio AZUL/BLUE M/M",
+    "quantity": 1,
+    "selling_price": 17820,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621450772814-03",
+    "sku_id": "402771",
+    "product_id": "140517",
+    "name": "Camisa Polo Grama VERDE/GREEN M/M",
+    "quantity": 1,
+    "selling_price": 16110,
+    "empresa_id": 1
+  },
+  {
+    "order_id": "1621450772814-03",
+    "sku_id": "402772",
+    "product_id": "140517",
+    "name": "Camisa Polo Grama VERDE/GREEN G/L",
+    "quantity": 1,
+    "selling_price": 16110,
+    "empresa_id": 1
+  }
+]

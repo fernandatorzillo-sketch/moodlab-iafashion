@@ -1,0 +1,19 @@
+{
+  "period_start": "2024-04-17T12:14:16.000Z",
+  "period_end": "2026-04-07T12:14:16.000Z",
+  "months_back": 24,
+  "chunk_days": 15,
+  "per_page": 50,
+  "max_pages": 30,
+  "checkpoint_interval": 100,
+  "total_order_summaries_raw": 60233,
+  "total_order_summaries_deduped": 60112,
+  "total_orders_normalized": 48199,
+  "total_errors": 101,
+  "last_processed_index": 48300,
+  "last_processed_order_id": "1580660711564-01",
+  "generated_at": "2026-04-08T12:21:14.000Z",
+  "account": "lojaaguadecoco",
+  "environment": "vtexcommercestable",
+  "status": "checkpoint"
+}

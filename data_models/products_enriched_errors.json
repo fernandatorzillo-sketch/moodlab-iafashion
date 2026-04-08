@@ -1,0 +1,17 @@
+[
+  {
+    "product_id": "96019",
+    "error": "Erro VTEX 500 em https://lojaaguadecoco.vtexcommercestable.com.br/api/catalog/pvt/stockkeepingunit/290506: ",
+    "raw": {
+      "product_id": "96019",
+      "sku_ids": [
+        290502,
+        290503,
+        290504,
+        290505,
+        290506,
+        290507
+      ]
+    }
+  }
+]
