@@ -5,3 +5,7 @@ build/
 __pycache__
 dist
 vite.config.ts.timestamp-*
+
+data_models/orders_vtex_24m.json
+data_models/orders_vtex_24m_errors.json
+data_models/orders_vtex_24m_meta.json
