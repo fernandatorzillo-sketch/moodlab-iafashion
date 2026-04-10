@@ -2,17 +2,16 @@ import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from core.config import settings
 from fastapi import FastAPI
-from api.customer_closet import router as customer_closet_router
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles  # 👈 IMPORTANTE
+from fastapi.staticfiles import StaticFiles
 
-# MODULE_IMPORTS_START
+from core.config import settings
+from api.customer_closet import router as customer_closet_router
+
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
-# MODULE_IMPORTS_END
 
 
 @asynccontextmanager
@@ -24,9 +23,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         traceback.print_exc()
     yield
-    # MODULE_SHUTDOWN_START
     await close_database()
-    # MODULE_SHUTDOWN_END
 
 
 app = FastAPI(
@@ -36,13 +33,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 🔥 ROTAS
-app.include_router(customer_closet_router)
-
-# 🔥 SERVIR ARQUIVOS ESTÁTICOS (SEU JS)
-app.mount("/public", StaticFiles(directory="public"), name="public")
-
-# 🔥 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -50,6 +40,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://homologaguadecoco.myvtex.com",
         "https://www.aguadecoco.com.br",
         "https://aguadecoco.com.br",
     ],
@@ -59,7 +50,11 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# 🔥 ROTAS BASE
+app.include_router(customer_closet_router)
+
+app.mount("/public", StaticFiles(directory="public"), name="public")
+
+
 @app.get("/")
 async def root():
     return {"message": "FastAPI Modular Template is running"}
