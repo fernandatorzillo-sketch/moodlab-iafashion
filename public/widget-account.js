@@ -28,9 +28,9 @@
     style.id = "moodlab-account-closet-styles";
     style.innerHTML = `
       #${CONFIG.ROOT_ID} {
-        max-width: 1280px;
-        margin: 32px auto;
-        padding: 0 16px;
+        max-width: 1440px;
+        margin: 8px auto 32px;
+        padding: 0 24px;
         font-family: Arial, sans-serif;
       }
 
@@ -38,8 +38,8 @@
         background: #fff;
         border: 1px solid #e9dfcf;
         border-radius: 18px;
-        padding: 28px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+        padding: 24px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.03);
       }
 
       .ml-closet-header h1 {
@@ -229,6 +229,31 @@
         color: #a04f4f;
         background: #fff6f6;
         border-color: #efcaca;
+      }
+
+      @media (max-width: 768px) {
+        #${CONFIG.ROOT_ID} {
+          padding: 0 16px;
+          margin: 8px auto 24px;
+        }
+
+        .ml-closet-shell {
+          padding: 18px;
+        }
+
+        .ml-closet-header h1 {
+          font-size: 28px;
+        }
+
+        .ml-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (max-width: 540px) {
+        .ml-grid {
+          grid-template-columns: 1fr;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -468,6 +493,49 @@
   function renderAccountCloset(root, data) {
     const customerName = safeText(data.customer && data.customer.name) || "Cliente";
 
+    const hasCloset = Array.isArray(data.closet) && data.closet.length > 0;
+    const hasLooks = Array.isArray(data.looks) && data.looks.length > 0;
+    const hasRecommendations =
+      Array.isArray(data.recommendations) && data.recommendations.length > 0;
+
+    const fallbackRecommendations = [
+      {
+        name: "Vestido Longo Resort",
+        category: "Vestidos",
+        reason: "Sugestão de teste para homologação.",
+        image_url: "https://via.placeholder.com/400x533?text=Produto+1",
+        url: "/",
+      },
+      {
+        name: "Saída de Praia Texturizada",
+        category: "Praia",
+        reason: "Peça com perfil alinhado à marca.",
+        image_url: "https://via.placeholder.com/400x533?text=Produto+2",
+        url: "/",
+      },
+      {
+        name: "Camisa Linho Feminina",
+        category: "Feminino",
+        reason: "Combina com o perfil do cliente.",
+        image_url: "https://via.placeholder.com/400x533?text=Produto+3",
+        url: "/",
+      },
+      {
+        name: "Óculos de Sol Clássico",
+        category: "Acessórios",
+        reason: "Complemento de look sugerido.",
+        image_url: "https://via.placeholder.com/400x533?text=Produto+4",
+        url: "/",
+      },
+    ];
+
+    const finalData = {
+      customer: data.customer || { name: customerName },
+      closet: hasCloset ? data.closet : [],
+      looks: hasLooks ? data.looks : [],
+      recommendations: hasRecommendations ? data.recommendations : fallbackRecommendations,
+    };
+
     root.innerHTML = `
       <div class="ml-closet-shell">
         <div class="ml-closet-header">
@@ -475,10 +543,10 @@
           <p>${CONFIG.SUBTITLE}</p>
           <p style="margin-top:8px;"><strong>${escapeHtml(customerName)}</strong></p>
         </div>
-        ${buildStats(data)}
-        ${buildClosetSection(data.closet)}
-        ${buildLooksSection(data.looks)}
-        ${buildRecommendationsSection(data.recommendations)}
+        ${buildStats(finalData)}
+        ${buildClosetSection(finalData.closet)}
+        ${buildLooksSection(finalData.looks)}
+        ${buildRecommendationsSection(finalData.recommendations)}
       </div>
     `;
 
