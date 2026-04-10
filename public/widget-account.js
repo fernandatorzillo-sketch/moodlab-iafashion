@@ -293,10 +293,14 @@
 
   async function fetchClosetData(email) {
     const response = await fetch(
-      `${CONFIG.API_BASE}/api/v1/customer-closet/account?email=${encodeURIComponent(email)}`,
+      `${CONFIG.API_BASE}/api/v1/customer-closet/lookup`,
       {
-        method: "GET",
-        headers: { Accept: "application/json" },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ email: email }),
       }
     );
 
