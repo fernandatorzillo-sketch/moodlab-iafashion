@@ -240,7 +240,8 @@
       root = document.createElement("div");
       root.id = CONFIG.ROOT_ID;
       const target =
-        document.querySelector(".vtex-account") ||
+        document.querySelector(".account__container.container") ||
+        document.querySelector(".account__main") ||
         document.querySelector(".account") ||
         document.querySelector(".container") ||
         document.body;
@@ -270,13 +271,27 @@
 
   function getLoggedEmail() {
     try {
-      return (
+      const fromCheckout =
         window.vtexjs &&
         window.vtexjs.checkout &&
         window.vtexjs.checkout.orderForm &&
         window.vtexjs.checkout.orderForm.clientProfileData &&
-        window.vtexjs.checkout.orderForm.clientProfileData.email
-      ) || "";
+        window.vtexjs.checkout.orderForm.clientProfileData.email;
+
+      if (fromCheckout) return String(fromCheckout).trim();
+
+      const pageText = document.body ? document.body.innerText : "";
+      const match = pageText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+      if (match && match[0]) return match[0].trim();
+
+      const mailto = document.querySelector('a[href^="mailto:"]');
+      if (mailto) {
+        const href = mailto.getAttribute("href") || "";
+        const email = href.replace(/^mailto:/i, "").trim();
+        if (email) return email;
+      }
+
+      return "";
     } catch (e) {
       return "";
     }
@@ -476,7 +491,7 @@
     renderLoading(root);
 
     try {
-      const email = await waitForEmail(12, 1000);
+      const email = await waitForEmail(20, 1000);
       if (!email) {
         renderError(root, "Não foi possível identificar o cliente logado.");
         return;
