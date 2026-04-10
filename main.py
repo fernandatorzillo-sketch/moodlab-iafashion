@@ -3,11 +3,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from core.config import settings
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI
 from api.customer_closet import router as customer_closet_router
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.routing import APIRouter
+from fastapi.staticfiles import StaticFiles  # 👈 IMPORTANTE
 
 # MODULE_IMPORTS_START
 from services.database import initialize_database, close_database
@@ -37,9 +36,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 🔥 ROTAS
 app.include_router(customer_closet_router)
 
-# MODULE_MIDDLEWARE_START
+# 🔥 SERVIR ARQUIVOS ESTÁTICOS (SEU JS)
+app.mount("/public", StaticFiles(directory="public"), name="public")
+
+# 🔥 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -55,9 +58,8 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-# MODULE_MIDDLEWARE_END
 
-
+# 🔥 ROTAS BASE
 @app.get("/")
 async def root():
     return {"message": "FastAPI Modular Template is running"}
