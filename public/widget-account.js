@@ -2,7 +2,7 @@
   const CONFIG = {
     API_BASE:
       (window.MOODLAB_CLOSET_CONFIG && window.MOODLAB_CLOSET_CONFIG.API_BASE) ||
-      "https://SEU-DOMINIO-API.com",
+      "https://closet-moodlab.onrender.com",
     ROOT_ID: "moodlab-account-closet-root",
     TITLE: "Seu Closet",
     SUBTITLE: "Suas peças, combinações e sugestões em um só lugar.",
