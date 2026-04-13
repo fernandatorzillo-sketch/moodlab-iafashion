@@ -1,7 +1,8 @@
 (function () {
   const CONFIG = {
     LOGIN_URL: "/login?returnUrl=/secure/account#/closet",
-    CLOSET_URL: "/secure/account#/closet"
+    CLOSET_URL: "/secure/account#/closet",
+    BTN_ID: "ml-floating-closet-btn"
   };
 
   function getEmail() {
@@ -24,33 +25,36 @@
     const style = document.createElement("style");
     style.id = "ml-floating-closet-style";
     style.innerHTML = `
-      .ml-floating-closet-btn {
+      #${CONFIG.BTN_ID} {
         position: fixed;
         right: 24px;
         bottom: 110px;
-        width: 58px;
-        height: 58px;
+        width: 64px;
+        height: 64px;
         border-radius: 999px;
         background: #b7a36b;
         color: #fff;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 9999;
+        z-index: 99999;
         box-shadow: 0 10px 24px rgba(0,0,0,0.18);
-        cursor: pointer;
         text-decoration: none;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 700;
+        text-align: center;
+        line-height: 1.1;
       }
     `;
     document.head.appendChild(style);
   }
 
   function createButton() {
+    if (document.getElementById(CONFIG.BTN_ID)) return;
+
     const btn = document.createElement("a");
-    btn.className = "ml-floating-closet-btn";
-    btn.innerText = "Closet";
+    btn.id = CONFIG.BTN_ID;
+    btn.innerHTML = "Meu<br>Closet";
 
     const email = getEmail();
     btn.href = email ? CONFIG.CLOSET_URL : CONFIG.LOGIN_URL;
