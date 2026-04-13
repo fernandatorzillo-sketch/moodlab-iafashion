@@ -1,37 +1,11 @@
-import math
 from typing import Any
 
 
 def normalize_text(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    replacements = {
-        "á": "a",
-        "à": "a",
-        "ã": "a",
-        "â": "a",
-        "é": "e",
-        "ê": "e",
-        "í": "i",
-        "ó": "o",
-        "ô": "o",
-        "õ": "o",
-        "ú": "u",
-        "ç": "c",
-        "/": " ",
-        "-": " ",
-        "_": " ",
-        "|": " ",
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    return " ".join(text.split())
+    return str(value or "").strip().lower()
 
 
-def normalize_id(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def as_list(value: Any) -> list[Any]:
+def as_list(value: Any) -> list:
     if value is None:
         return []
     if isinstance(value, list):
@@ -39,479 +13,229 @@ def as_list(value: Any) -> list[Any]:
     return [value]
 
 
-def get_field(item: dict[str, Any], *keys: str, default: Any = "") -> Any:
+def split_csv(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [normalize_text(v) for v in value if v]
+    return [normalize_text(v) for v in str(value).split(",") if str(v).strip()]
+
+
+def get_item_value(item: dict, *keys, default=""):
     for key in keys:
-        if key in item and item.get(key) not in [None, ""]:
-            return item.get(key)
+        if key in item and item[key] not in [None, ""]:
+            return item[key]
     return default
 
 
-def spec_values(item: dict[str, Any], candidate_names: list[str]) -> list[str]:
-    specs = item.get("specifications") or {}
-    if not isinstance(specs, dict):
-        return []
-
-    wanted = {normalize_text(name) for name in candidate_names}
-    values: list[str] = []
-
-    for key, raw_values in specs.items():
-        if normalize_text(key) not in wanted:
-            continue
-
-        for value in as_list(raw_values):
-            text = str(value or "").strip()
-            if text and text not in values:
-                values.append(text)
-
-    return values
+def get_item_colors(item: dict) -> list[str]:
+    colors = get_item_value(item, "colors", "cor", default=[])
+    return split_csv(colors)
 
 
-def product_name(item: dict[str, Any]) -> str:
-    return str(
-        get_field(item, "nome", "name", "product_name", "produto", default="Produto")
+def get_item_size(item: dict) -> str:
+    return normalize_text(get_item_value(item, "size", "tamanho", default=""))
+
+
+def get_item_type(item: dict) -> str:
+    return normalize_text(
+        get_item_value(item, "product_type", "tipo_produto", "tipo de produto", "category", "categoria", default="")
     )
 
 
-def product_sku(item: dict[str, Any]) -> str:
-    return normalize_id(get_field(item, "sku_id", "sku", default=""))
+def get_item_department(item: dict) -> str:
+    return normalize_text(get_item_value(item, "department", "departamento", default=""))
 
 
-def product_id(item: dict[str, Any]) -> str:
-    return normalize_id(get_field(item, "product_id", "id", default=""))
+def get_item_occasion(item: dict) -> str:
+    return normalize_text(get_item_value(item, "occasion", "ocasiao", "ocasião", default=""))
 
 
-def product_ref(item: dict[str, Any]) -> str:
-    return normalize_id(get_field(item, "ref_id", "RefId", default=""))
+def get_item_estamparia(item: dict) -> str:
+    return normalize_text(get_item_value(item, "estamparia", default=""))
 
 
-def product_link(item: dict[str, Any]) -> str:
-    return str(get_field(item, "link_produto", "detailUrl", "link", default="#"))
-
-
-def product_image(item: dict[str, Any]) -> str:
-    direct = get_field(item, "imagem_url", "image_url", default="")
-    if direct:
-        return str(direct)
-
-    images = item.get("images") or []
-    if isinstance(images, list) and images:
-        first = images[0]
-        if isinstance(first, dict):
-            return (
-                first.get("ImageUrl")
-                or first.get("imageUrl")
-                or first.get("Url")
-                or ""
-            )
-    return ""
-
-
-def product_price(item: dict[str, Any]) -> float:
-    raw = get_field(item, "price", "preco", default=0)
+def get_item_stock(item: dict) -> int:
+    stock = get_item_value(item, "stock_quantity", "estoque", default=0)
     try:
-        return float(raw or 0)
+        return int(stock)
     except Exception:
-        return 0.0
+        return 0
 
 
-def product_gender(item: dict[str, Any]) -> str:
-    direct = normalize_text(get_field(item, "gender", "genero", "gênero", default=""))
-    if direct:
-        return direct
-
-    spec = spec_values(item, ["gender", "genero", "gênero", "sexo"])
-    return normalize_text(spec[0]) if spec else ""
+def is_in_stock(item: dict) -> bool:
+    in_stock = item.get("in_stock")
+    if isinstance(in_stock, bool):
+        return in_stock and get_item_stock(item) > 0
+    return get_item_stock(item) > 0
 
 
-def product_department(item: dict[str, Any]) -> str:
-    direct = normalize_text(get_field(item, "department", "departamento", default=""))
-    if direct:
-        return direct
-
-    spec = spec_values(item, ["department", "departamento"])
-    return normalize_text(spec[0]) if spec else ""
+def get_item_identity(item: dict) -> str:
+    return str(
+        get_item_value(item, "sku_id", "sku", "product_id", "ref_id", "id", "name", default="")
+    ).strip()
 
 
-def product_category(item: dict[str, Any]) -> str:
-    direct = normalize_text(
-        get_field(
-            item,
-            "categoria",
-            "category",
-            "product_type",
-            "tipo_produto",
-            "tipo",
-            default="",
-        )
-    )
-    if direct:
-        return direct
+def build_profile(closet_products: list[dict], answers: dict, style_preferences: dict | None = None) -> dict:
+    style_preferences = style_preferences or {}
 
-    spec = spec_values(
-        item,
-        [
-            "tipo",
-            "tipo de produto",
-            "product type",
-            "categoria",
-            "subcategoria",
-        ],
-    )
-    if spec:
-        return normalize_text(spec[0])
+    closet_departments = []
+    closet_types = []
+    closet_colors = []
+    closet_occasions = []
+    closet_estampas = []
 
-    name = normalize_text(product_name(item))
-    if any(x in name for x in ["biquini", "biquíni", "sutia", "sutiã", "calcinha"]):
-        return "beachwear"
-    if any(x in name for x in ["maio", "maiô"]):
-        return "maio"
-    if any(x in name for x in ["saida", "saída", "canga", "pareo", "pareô", "kimono"]):
-        return "saida_praia"
-    if "vestido" in name:
-        return "vestido"
-    if "saia" in name:
-        return "saia"
-    if any(x in name for x in ["bone", "boné", "oculos", "óculos", "bolsa", "chapeu", "chapéu"]):
-        return "acessorio"
-    if any(x in name for x in ["vela", "almofada", "manta", "vaso", "casa", "decor"]):
-        return "casa"
-    return "outros"
+    for item in closet_products:
+        dept = get_item_department(item)
+        ptype = get_item_type(item)
+        occ = get_item_occasion(item)
+        est = get_item_estamparia(item)
+        colors = get_item_colors(item)
 
+        if dept:
+            closet_departments.append(dept)
+        if ptype:
+            closet_types.append(ptype)
+        if occ:
+            closet_occasions.append(occ)
+        if est:
+            closet_estampas.append(est)
+        closet_colors.extend(colors)
 
-def product_color(item: dict[str, Any]) -> str:
-    direct = normalize_text(get_field(item, "cor", "color", default=""))
-    if direct:
-        return direct
-
-    spec = spec_values(item, ["cor", "color"])
-    return normalize_text(spec[0]) if spec else ""
-
-
-def product_collection(item: dict[str, Any]) -> str:
-    direct = normalize_text(get_field(item, "colecao", "coleção", "collection", default=""))
-    if direct:
-        return direct
-
-    spec = spec_values(item, ["colecao", "coleção", "collection"])
-    return normalize_text(spec[0]) if spec else ""
-
-
-def product_style(item: dict[str, Any]) -> str:
-    direct = normalize_text(get_field(item, "estilo", "style", default=""))
-    if direct:
-        return direct
-
-    spec = spec_values(item, ["estilo", "style"])
-    return normalize_text(spec[0]) if spec else ""
-
-
-def infer_profile(closet_products: list[dict[str, Any]]) -> dict[str, Any]:
-    def top_value(values: list[str]) -> str:
-        clean = [v for v in values if v]
-        if not clean:
-            return ""
-        return max(set(clean), key=clean.count)
-
-    genders = [product_gender(p) for p in closet_products]
-    departments = [product_department(p) for p in closet_products]
-    categories = [product_category(p) for p in closet_products]
-    colors = [product_color(p) for p in closet_products]
-    collections = [product_collection(p) for p in closet_products]
-    styles = [product_style(p) for p in closet_products]
+    preferred_colors = split_csv(style_preferences.get("preferred_colors"))
+    preferred_styles = split_csv(style_preferences.get("preferred_styles"))
+    preferred_occasions = split_csv(style_preferences.get("preferred_occasions"))
 
     return {
-        "dominant_gender": top_value(genders),
-        "dominant_department": top_value(departments),
-        "dominant_category": top_value(categories),
-        "dominant_color": top_value(colors),
-        "dominant_collection": top_value(collections),
-        "dominant_style": top_value(styles),
-        "owned_categories": sorted(list({c for c in categories if c})),
-        "owned_departments": sorted(list({d for d in departments if d})),
-        "owned_collections": sorted(list({c for c in collections if c})),
+        "answer_occasion": normalize_text(answers.get("occasion")),
+        "answer_goal": normalize_text(answers.get("goal")),
+        "answer_style": normalize_text(answers.get("style")),
+        "closet_departments": list(set(closet_departments)),
+        "closet_types": list(set(closet_types)),
+        "closet_colors": list(set(closet_colors)),
+        "closet_occasions": list(set(closet_occasions)),
+        "closet_estampas": list(set(closet_estampas)),
+        "preferred_colors": preferred_colors,
+        "preferred_styles": preferred_styles,
+        "preferred_occasions": preferred_occasions,
     }
 
 
-def get_owned_sets(closet_products: list[dict[str, Any]]) -> dict[str, set[str]]:
-    return {
-        "sku_ids": {product_sku(p) for p in closet_products if product_sku(p)},
-        "product_ids": {product_id(p) for p in closet_products if product_id(p)},
-        "ref_ids": {product_ref(p) for p in closet_products if product_ref(p)},
-        "names": {normalize_text(product_name(p)) for p in closet_products if product_name(p)},
-    }
+def score_candidate(candidate: dict, profile: dict) -> tuple[int, list[str]]:
+    score = 0
+    reasons = []
 
+    if not is_in_stock(candidate):
+        return -999, ["sem estoque"]
 
-def is_already_owned(candidate: dict[str, Any], owned_sets: dict[str, set[str]]) -> bool:
-    if product_sku(candidate) and product_sku(candidate) in owned_sets["sku_ids"]:
-        return True
-    if product_id(candidate) and product_id(candidate) in owned_sets["product_ids"]:
-        return True
-    if product_ref(candidate) and product_ref(candidate) in owned_sets["ref_ids"]:
-        return True
-    if normalize_text(product_name(candidate)) in owned_sets["names"]:
-        return True
-    return False
+    candidate_department = get_item_department(candidate)
+    candidate_type = get_item_type(candidate)
+    candidate_occasion = get_item_occasion(candidate)
+    candidate_estamparia = get_item_estamparia(candidate)
+    candidate_colors = get_item_colors(candidate)
 
+    if candidate_department and candidate_department in profile["closet_departments"]:
+        score += 3
+        reasons.append("conversa com categorias já compradas")
 
-def look_rules_for_answers(answers: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
-    ocasiao = normalize_text(answers.get("ocasiao", ""))
-    objetivo = normalize_text(answers.get("objetivo", ""))
-    estilo = normalize_text(answers.get("estilo", ""))
-    dominant_category = profile.get("dominant_category", "")
+    if candidate_type and candidate_type in profile["closet_types"]:
+        score += 4
+        reasons.append("mantém coerência com o tipo de peça do closet")
 
-    allowed_categories: set[str] = set()
-    blocked_categories: set[str] = {"casa"}
-
-    if dominant_category in {"beachwear", "maio", "saida_praia"}:
-        allowed_categories.update(
-            {
-                "beachwear",
-                "maio",
-                "saida_praia",
-                "saia",
-                "acessorio",
-                "acessorio_praia",
-            }
-        )
-
-        if ocasiao in {"praia", "praia resort", "resort"}:
-            allowed_categories.update(
-                {
-                    "beachwear",
-                    "maio",
-                    "saida_praia",
-                    "saia",
-                    "acessorio",
-                    "acessorio_praia",
-                }
-            )
-
-        if objetivo == "completar look" or objetivo == "completar_look":
-            allowed_categories.update({"saida_praia", "saia", "acessorio", "acessorio_praia"})
-            blocked_categories.update({"vestido"})
-
-        if objetivo == "similares":
-            allowed_categories.update({"beachwear", "maio"})
-
-    else:
-        allowed_categories.update(
-            {
-                "vestido",
-                "saia",
-                "acessorio",
-                "outros",
-                profile.get("dominant_category", ""),
-            }
-        )
-
-    return {
-        "ocasiao": ocasiao,
-        "objetivo": objetivo,
-        "estilo": estilo,
-        "allowed_categories": {x for x in allowed_categories if x},
-        "blocked_categories": blocked_categories,
-    }
-
-
-def candidate_blocked(
-    candidate: dict[str, Any],
-    profile: dict[str, Any],
-    rules: dict[str, Any],
-) -> bool:
-    category = product_category(candidate)
-    department = product_department(candidate)
-    gender = product_gender(candidate)
-
-    if category in rules["blocked_categories"]:
-        return True
-
-    if department == "casa" or category == "casa":
-        return True
-
-    dominant_gender = profile.get("dominant_gender", "")
-    if dominant_gender == "feminino" and gender == "masculino":
-        return True
-    if dominant_gender == "masculino" and gender == "feminino":
-        return True
-
-    allowed_categories = rules["allowed_categories"]
-    if allowed_categories and category not in allowed_categories:
-        return True
-
-    return False
-
-
-def score_candidate(
-    candidate: dict[str, Any],
-    closet_products: list[dict[str, Any]],
-    profile: dict[str, Any],
-    rules: dict[str, Any],
-) -> tuple[float, list[str]]:
-    score = 0.0
-    reasons: list[str] = []
-
-    category = product_category(candidate)
-    department = product_department(candidate)
-    color = product_color(candidate)
-    collection = product_collection(candidate)
-    style = product_style(candidate)
-    price = product_price(candidate)
-
-    dominant_category = profile.get("dominant_category", "")
-    dominant_department = profile.get("dominant_department", "")
-    dominant_color = profile.get("dominant_color", "")
-    dominant_collection = profile.get("dominant_collection", "")
-    dominant_style = profile.get("dominant_style", "")
-
-    if category == dominant_category:
-        score += 40
-        reasons.append("Parecido com o que ela já compra")
-
-    if department and dominant_department and department == dominant_department:
-        score += 25
-        reasons.append("Mesmo departamento das compras anteriores")
-
-    if color and dominant_color and color == dominant_color:
-        score += 10
-        reasons.append("Cor alinhada ao closet")
-
-    if collection and dominant_collection and collection == dominant_collection:
-        score += 10
-        reasons.append("Coleção próxima do histórico")
-
-    if style and dominant_style and style == dominant_style:
-        score += 12
-        reasons.append("Estilo compatível")
-
-    objetivo = rules["objetivo"]
-    ocasiao = rules["ocasiao"]
-    estilo_quiz = rules["estilo"]
-
-    if dominant_category in {"beachwear", "maio", "saida_praia"}:
-        if category in {"saida_praia", "saia", "acessorio", "acessorio_praia"}:
-            score += 35
-            reasons.append("Complementa compras de praia")
-
-        if ocasiao in {"praia", "praia resort", "resort"} and category in {
-            "beachwear",
-            "maio",
-            "saida_praia",
-            "saia",
-            "acessorio",
-            "acessorio_praia",
-        }:
-            score += 30
-            reasons.append("Faz sentido para look praia")
-
-        if category == "vestido":
-            score -= 80
-
-    if objetivo in {"completar_look", "completar look"}:
-        if category in {"saida_praia", "saia", "acessorio", "acessorio_praia"}:
-            score += 30
-            reasons.append("Ajuda a completar o look")
-        if category in {"beachwear", "maio"}:
-            score += 8
-
-    if objetivo == "similares":
-        if category == dominant_category:
-            score += 20
-            reasons.append("Peça similar ao histórico")
-
-    if objetivo == "novidades":
+    if candidate_occasion and candidate_occasion in profile["preferred_occasions"]:
         score += 5
+        reasons.append("alinha com ocasiões preferidas")
 
-    if estilo_quiz and style and style == estilo_quiz:
-        score += 18
-        reasons.append("Combina com o estilo escolhido")
+    if candidate_occasion and candidate_occasion == profile["answer_occasion"]:
+        score += 6
+        reasons.append("combina com a ocasião escolhida")
 
-    if price > 0:
-        avg_price = average_price(closet_products)
-        if avg_price > 0:
-            diff_ratio = abs(price - avg_price) / max(avg_price, 1)
-            score += max(0, 12 - (diff_ratio * 10))
+    if candidate_estamparia and candidate_estamparia in profile["closet_estampas"]:
+        score += 2
+        reasons.append("mantém linguagem de estamparia parecida")
 
-    reasons = dedupe_preserve_order(reasons)
+    if any(color in profile["preferred_colors"] for color in candidate_colors):
+        score += 4
+        reasons.append("segue paleta de cor preferida")
+
+    if any(color in profile["closet_colors"] for color in candidate_colors):
+        score += 3
+        reasons.append("combina com as cores do closet")
+
+    goal = profile["answer_goal"]
+    if goal == "cross_sell":
+        if candidate_type in ["acessorio", "acessório", "saida", "saída", "sandalia", "bolsa"]:
+            score += 4
+            reasons.append("bom item de complemento para cross sell")
+
+    if goal == "up_sell":
+        if candidate_department in ["vestidos", "feminino", "resort", "alfaiataria"]:
+            score += 4
+            reasons.append("tem potencial de upgrade de look")
+
+    style = profile["answer_style"]
+    if style and style in normalize_text(candidate.get("name", "")):
+        score += 2
+        reasons.append("reforça o estilo buscado")
+
     return score, reasons
 
 
-def average_price(products: list[dict[str, Any]]) -> float:
-    prices = [product_price(p) for p in products if product_price(p) > 0]
-    if not prices:
-        return 0.0
-    return sum(prices) / len(prices)
+def build_virtual_seller_message(profile: dict, top_reasons: list[str]) -> str:
+    occasion = profile.get("answer_occasion") or "o momento que você escolheu"
+    goal = profile.get("answer_goal") or "completar seu closet"
 
-
-def dedupe_preserve_order(items: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for item in items:
-        if item not in seen:
-            seen.add(item)
-            result.append(item)
-    return result
+    intro = f"Separei peças pensando em {occasion} e no seu objetivo de {goal.replace('_', ' ')}."
+    if top_reasons:
+        detail = " Considerei principalmente " + ", ".join(top_reasons[:3]) + "."
+    else:
+        detail = " Considerei o histórico do seu closet e suas preferências."
+    return intro + detail
 
 
 def build_recommendations(
-    closet_products: list[dict[str, Any]],
-    catalog: list[dict[str, Any]],
-    answers: dict[str, Any],
+    closet_products: list[dict],
+    catalog: list[dict],
+    answers: dict,
+    style_preferences: dict | None = None,
     limit: int = 8,
-) -> dict[str, Any]:
-    profile = infer_profile(closet_products)
-    owned_sets = get_owned_sets(closet_products)
-    rules = look_rules_for_answers(answers, profile)
+) -> dict:
+    profile = build_profile(closet_products, answers, style_preferences)
 
-    ranked: list[dict[str, Any]] = []
+    owned_ids = {get_item_identity(item) for item in closet_products if get_item_identity(item)}
+    scored = []
 
     for candidate in catalog:
-        if is_already_owned(candidate, owned_sets):
+        candidate_id = get_item_identity(candidate)
+        if not candidate_id or candidate_id in owned_ids:
             continue
 
-        if candidate_blocked(candidate, profile, rules):
-            continue
-
-        score, reasons = score_candidate(candidate, closet_products, profile, rules)
-
+        score, reasons = score_candidate(candidate, profile)
         if score <= 0:
             continue
 
-        ranked.append(
-            {
-                "produto_id": product_id(candidate),
-                "sku_id": product_sku(candidate),
-                "ref_id": product_ref(candidate),
-                "nome": product_name(candidate),
-                "imagem_url": product_image(candidate),
-                "categoria": product_category(candidate),
-                "departamento": product_department(candidate),
-                "genero": product_gender(candidate),
-                "cor": product_color(candidate),
-                "colecao": product_collection(candidate),
-                "estilo": product_style(candidate),
-                "price": product_price(candidate),
-                "link_produto": product_link(candidate),
-                "motivo": reasons[0] if reasons else "Selecionado para você",
-                "score": round(score, 2),
-                "reasons": reasons,
-            }
-        )
+        enriched = dict(candidate)
+        enriched["reason"] = "; ".join(reasons[:2]) if reasons else "Selecionado pelo seu perfil"
+        enriched["score"] = score
+        scored.append(enriched)
 
-    ranked.sort(key=lambda item: item["score"], reverse=True)
+    scored.sort(key=lambda x: x.get("score", 0), reverse=True)
+    selected = scored[:limit]
+
+    all_reasons = []
+    for item in selected:
+        if item.get("reason"):
+            all_reasons.extend(item["reason"].split("; "))
+
+    human_message = build_virtual_seller_message(profile, all_reasons)
 
     return {
         "profile": profile,
-        "rules": {
-            "ocasiao": rules["ocasiao"],
-            "objetivo": rules["objetivo"],
-            "estilo": rules["estilo"],
-            "allowed_categories": sorted(list(rules["allowed_categories"])),
-            "blocked_categories": sorted(list(rules["blocked_categories"])),
-        },
-        "recommendations": ranked[:limit],
+        "human_message": human_message,
+        "recommendations": selected,
         "meta": {
-            "catalog_size": len(catalog),
-            "closet_size": len(closet_products),
-            "ranked_count": len(ranked),
+            "catalog_analyzed": len(catalog),
+            "closet_count": len(closet_products),
+            "returned_count": len(selected),
         },
     }
