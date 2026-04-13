@@ -32,7 +32,7 @@ async def lookup_customer_closet(payload: LookupRequest):
         if not email:
             raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-        return await get_customer_closet_payload(email)
+        return get_customer_closet_payload(email)
 
     except HTTPException:
         raise
@@ -89,8 +89,8 @@ async def recommend(payload: RecommendationRequest):
         if not email:
             raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-        closet_payload = await get_customer_closet_payload(email)
-        catalog = await get_catalog_products()
+        closet_payload = get_customer_closet_payload(email)
+        catalog = get_catalog_products()
 
         result = build_recommendations(
             closet_products=closet_payload.get("closet", []),
