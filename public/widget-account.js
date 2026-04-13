@@ -196,12 +196,6 @@
         border: 1px solid #b7a36b;
       }
 
-      .ml-btn-secondary {
-        background: #fff;
-        color: #7c6c52;
-        border: 1px solid #d8c8af;
-      }
-
       .ml-look-box {
         border: 1px solid #eadfce;
         border-radius: 16px;
@@ -267,6 +261,7 @@
       const target =
         document.querySelector(".account__container.container") ||
         document.querySelector(".account__main") ||
+        document.querySelector(".account-main") ||
         document.querySelector(".account") ||
         document.querySelector(".container") ||
         document.body;
@@ -332,31 +327,65 @@
   }
 
   async function fetchClosetData(email) {
-    const response = await fetch(
-      `${CONFIG.API_BASE}/api/v1/customer-closet/lookup`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ email: email }),
-      }
-    );
+    const response = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/lookup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ email: email }),
+    });
+
+    const text = await response.text();
 
     if (!response.ok) {
-      const text = await response.text();
       throw new Error(text || `HTTP ${response.status}`);
     }
 
-    return response.json();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error("Resposta inválida da API.");
+    }
+  }
+
+  function normalizeApiData(raw) {
+    const customer =
+      raw.customer ||
+      (raw.cliente
+        ? {
+            name: raw.cliente.nome || raw.cliente.name || "Cliente",
+            email: raw.cliente.email || "",
+          }
+        : {
+            name: "Cliente",
+            email: "",
+          });
+
+    const closet = raw.closet || raw.closet_products || [];
+    const looks = raw.looks || [];
+    const recommendations = raw.recommendations || [];
+
+    return {
+      customer: customer,
+      closet: Array.isArray(closet) ? closet : [],
+      looks: Array.isArray(looks) ? looks : [],
+      recommendations: Array.isArray(recommendations) ? recommendations : [],
+      found: raw.found,
+      debug: raw.debug || {},
+    };
   }
 
   function buildStats(data) {
     const closetCount = Array.isArray(data.closet) ? data.closet.length : 0;
     const looksCount = Array.isArray(data.looks) ? data.looks.length : 0;
     const recsCount = Array.isArray(data.recommendations) ? data.recommendations.length : 0;
-    const categories = new Set((data.closet || []).map((i) => safeText(i.category)).filter(Boolean));
+
+    const categories = new Set(
+      (data.closet || [])
+        .map((i) => safeText(i.category || i.categoria || i.department))
+        .filter(Boolean)
+    );
 
     return `
       <div class="ml-closet-stats">
@@ -369,13 +398,14 @@
   }
 
   function buildCard(item, showReason) {
-    const category = escapeHtml(item.category || item.department || "");
-    const title = escapeHtml(item.name || "Produto");
+    const category = escapeHtml(item.category || item.categoria || item.department || "");
+    const title = escapeHtml(item.name || item.nome || "Produto");
     const reason = escapeHtml(item.reason || "");
-    const image = item.image_url
-      ? `<img src="${escapeHtml(item.image_url)}" alt="${title}" />`
+    const imageUrl = item.image_url || item.imagem_url || "";
+    const image = imageUrl
+      ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" />`
       : `<div>Sem imagem</div>`;
-    const url = item.url || "#";
+    const url = item.url || item.link_produto || "#";
 
     return `
       <div class="ml-card">
@@ -395,7 +425,13 @@
   function buildClosetSection(closet) {
     const items = Array.isArray(closet) ? closet : [];
     const categories = ["Todos"].concat(
-      Array.from(new Set(items.map((item) => safeText(item.category)).filter(Boolean)))
+      Array.from(
+        new Set(
+          items
+            .map((item) => safeText(item.category || item.categoria || item.department))
+            .filter(Boolean)
+        )
+      )
     );
 
     return `
@@ -417,7 +453,7 @@
               ? items
                   .map(
                     (item) => `
-                    <div class="ml-closet-item" data-category="${escapeHtml(item.category || "")}">
+                    <div class="ml-closet-item" data-category="${escapeHtml(item.category || item.categoria || item.department || "")}">
                       ${buildCard(item, false)}
                     </div>`
                   )
@@ -490,51 +526,9 @@
     });
   }
 
-  function renderAccountCloset(root, data) {
+  function renderAccountCloset(root, rawData) {
+    const data = normalizeApiData(rawData);
     const customerName = safeText(data.customer && data.customer.name) || "Cliente";
-
-    const hasCloset = Array.isArray(data.closet) && data.closet.length > 0;
-    const hasLooks = Array.isArray(data.looks) && data.looks.length > 0;
-    const hasRecommendations =
-      Array.isArray(data.recommendations) && data.recommendations.length > 0;
-
-    const fallbackRecommendations = [
-      {
-        name: "Vestido Longo Resort",
-        category: "Vestidos",
-        reason: "Sugestão de teste para homologação.",
-        image_url: "https://via.placeholder.com/400x533?text=Produto+1",
-        url: "/",
-      },
-      {
-        name: "Saída de Praia Texturizada",
-        category: "Praia",
-        reason: "Peça com perfil alinhado à marca.",
-        image_url: "https://via.placeholder.com/400x533?text=Produto+2",
-        url: "/",
-      },
-      {
-        name: "Camisa Linho Feminina",
-        category: "Feminino",
-        reason: "Combina com o perfil do cliente.",
-        image_url: "https://via.placeholder.com/400x533?text=Produto+3",
-        url: "/",
-      },
-      {
-        name: "Óculos de Sol Clássico",
-        category: "Acessórios",
-        reason: "Complemento de look sugerido.",
-        image_url: "https://via.placeholder.com/400x533?text=Produto+4",
-        url: "/",
-      },
-    ];
-
-    const finalData = {
-      customer: data.customer || { name: customerName },
-      closet: hasCloset ? data.closet : [],
-      looks: hasLooks ? data.looks : [],
-      recommendations: hasRecommendations ? data.recommendations : fallbackRecommendations,
-    };
 
     root.innerHTML = `
       <div class="ml-closet-shell">
@@ -543,10 +537,10 @@
           <p>${CONFIG.SUBTITLE}</p>
           <p style="margin-top:8px;"><strong>${escapeHtml(customerName)}</strong></p>
         </div>
-        ${buildStats(finalData)}
-        ${buildClosetSection(finalData.closet)}
-        ${buildLooksSection(finalData.looks)}
-        ${buildRecommendationsSection(finalData.recommendations)}
+        ${buildStats(data)}
+        ${buildClosetSection(data.closet)}
+        ${buildLooksSection(data.looks)}
+        ${buildRecommendationsSection(data.recommendations)}
       </div>
     `;
 
