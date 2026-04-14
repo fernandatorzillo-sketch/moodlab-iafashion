@@ -1,12 +1,9 @@
-import traceback
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.customer_closet_service import get_customer_closet_payload
-from services.catalog_service import get_catalog_products
-from services.recommendation_engine import build_recommendations
 
 router = APIRouter(prefix="/api/v1/customer-closet", tags=["customer-closet"])
 
@@ -27,18 +24,11 @@ def normalize_email(email: Any) -> str:
 
 @router.post("/lookup")
 async def lookup_customer_closet(payload: LookupRequest):
-    try:
-        email = normalize_email(payload.email)
-        if not email:
-            raise HTTPException(status_code=400, detail="E-mail é obrigatório")
+    email = normalize_email(payload.email)
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-        return get_customer_closet_payload(email)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    return await get_customer_closet_payload(email)
 
 
 @router.get("/questions")
@@ -84,26 +74,8 @@ async def get_questions():
 
 @router.post("/recommendations")
 async def recommend(payload: RecommendationRequest):
-    try:
-        email = normalize_email(payload.email)
-        if not email:
-            raise HTTPException(status_code=400, detail="E-mail é obrigatório")
-
-        closet_payload = get_customer_closet_payload(email)
-        catalog = get_catalog_products()
-
-        result = build_recommendations(
-            closet_products=closet_payload.get("closet", []),
-            catalog=catalog,
-            answers=payload.answers or {},
-            style_preferences=closet_payload.get("customer", {}).get("style_preferences", {}),
-            limit=payload.limit or 8,
-        )
-
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "email": normalize_email(payload.email),
+        "recommendations": [],
+        "message": "Pacote 1 entregue. Recomendação inteligente entra no Pacote 2.",
+    }
