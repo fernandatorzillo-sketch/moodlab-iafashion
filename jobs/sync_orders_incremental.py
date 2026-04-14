@@ -108,10 +108,8 @@ async def replace_order_items(session, detail: dict) -> None:
     email = normalize_email(client.get("email"))
     created_at_order = parse_iso_datetime(detail.get("creationDate"))
 
-    existing_items = (
-        await session.execute(
-            OrderItem.__table__.delete().where(OrderItem.order_id == order_id)
-        )
+    await session.execute(
+        OrderItem.__table__.delete().where(OrderItem.order_id == order_id)
     )
 
     items = detail.get("items") or []
@@ -158,11 +156,14 @@ async def process_order_detail(session, order_id: str) -> None:
 
 
 async def run() -> None:
+    print("Iniciando sync_orders_incremental...", flush=True)
     await init_closet_db()
+    print("Banco inicializado.", flush=True)
 
     async with AsyncSessionLocal() as session:
         try:
             last_reference = await get_last_reference_value(session, JOB_NAME)
+            print(f"last_reference={last_reference}", flush=True)
 
             if last_reference:
                 start_dt = parse_iso_datetime(last_reference)
@@ -177,13 +178,20 @@ async def run() -> None:
             processed_orders = 0
             processed_chunks = 0
 
+            print(f"Janela total: {start_dt.isoformat()} -> {end_dt.isoformat()}", flush=True)
+
             for chunk_start, chunk_end in chunk_ranges(start_dt, end_dt, CHUNK_DAYS):
                 processed_chunks += 1
-                print(f"Chunk {processed_chunks}: {chunk_start.isoformat()} -> {chunk_end.isoformat()}")
+                print(
+                    f"Chunk {processed_chunks}: {chunk_start.isoformat()} -> {chunk_end.isoformat()}",
+                    flush=True,
+                )
 
                 seen_order_ids = set()
 
                 for page in range(1, MAX_PAGES_PER_CHUNK + 1):
+                    print(f"Consultando chunk={processed_chunks} page={page}...", flush=True)
+
                     payload = fetch_order_summaries_by_creation_date(
                         start_dt=chunk_start,
                         end_dt=chunk_end,
@@ -193,10 +201,13 @@ async def run() -> None:
                     orders = payload.get("list", []) or []
 
                     if not orders:
-                        print(f"Chunk {processed_chunks} page {page}: 0 pedidos")
+                        print(f"Chunk {processed_chunks} page {page}: 0 pedidos", flush=True)
                         break
 
-                    print(f"Chunk {processed_chunks} page {page}: {len(orders)} pedido(s)")
+                    print(
+                        f"Chunk {processed_chunks} page {page}: {len(orders)} pedido(s)",
+                        flush=True,
+                    )
 
                     for summary in orders:
                         order_id = to_str(summary.get("orderId"))
@@ -209,12 +220,16 @@ async def run() -> None:
 
                         if processed_orders % 50 == 0:
                             await session.commit()
-                            print(f"Checkpoint parcial: {processed_orders} pedidos processados")
+                            print(
+                                f"Checkpoint parcial: {processed_orders} pedidos processados",
+                                flush=True,
+                            )
 
                     if len(orders) < PER_PAGE:
                         break
 
                 await session.commit()
+                print(f"Chunk {processed_chunks} concluído.", flush=True)
 
             await mark_sync_success(
                 session=session,
@@ -224,10 +239,11 @@ async def run() -> None:
             )
             await session.commit()
 
-            print(f"Finalizado com sucesso. processed_orders={processed_orders}")
+            print(f"Finalizado com sucesso. processed_orders={processed_orders}", flush=True)
 
         except Exception as e:
             await session.rollback()
+            print(f"Erro no sync_orders_incremental: {e}", flush=True)
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise
