@@ -1,18 +1,13 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import text
 
-from models.customer_closet_item import CustomerClosetItem
-from models.order import Order
-from models.order_item import OrderItem
 from services.closet_db import AsyncSessionLocal, init_closet_db
 from services.sync_control_service import mark_sync_error, mark_sync_success
 
 JOB_NAME = "rebuild_customer_closets"
 MONTHS_BACK = 24
-BATCH_SIZE = 500
 
 
 def utcnow() -> datetime:
@@ -20,113 +15,79 @@ def utcnow() -> datetime:
 
 
 async def run() -> None:
-    print("Iniciando rebuild_customer_closets...", flush=True)
+    print("Iniciando rebuild_customer_closets SQL...", flush=True)
     await init_closet_db()
 
     cutoff = utcnow() - timedelta(days=30 * MONTHS_BACK)
 
     async with AsyncSessionLocal() as session:
         try:
-            query = (
-                select(OrderItem, Order)
-                .join(Order, Order.order_id == OrderItem.order_id)
-                .where(Order.creation_date >= cutoff)
-            )
+            print(f"Cutoff: {cutoff.isoformat()}", flush=True)
 
-            result = await session.stream(query)
-
-            aggregated = defaultdict(lambda: {
-                "purchase_count": 0,
-                "total_quantity": 0,
-                "total_spent": 0.0,
-                "first_purchase_at": None,
-                "last_purchase_at": None,
-                "data": None,
-            })
-
-            processed = 0
-
-            async for order_item, order in result:
-                email = (order.email or "").strip().lower()
-                if not email:
-                    continue
-
-                status = (order.status or "").strip().lower()
-                if status in {"canceled", "cancelado"}:
-                    continue
-
-                key = (
-                    email,
-                    order_item.sku_id or order_item.product_id or order_item.ref_id or order_item.name or "unknown",
-                )
-
-                agg = aggregated[key]
-
-                if not agg["data"]:
-                    agg["data"] = {
-                        "email": email,
-                        "sku_id": order_item.sku_id,
-                        "product_id": order_item.product_id,
-                        "ref_id": order_item.ref_id,
-                        "name": order_item.name,
-                        "category": order_item.category,
-                        "department": order_item.department,
-                        "brand": order_item.brand,
-                        "image_url": order_item.image_url,
-                        "product_url": order_item.product_url,
-                    }
-
-                agg["purchase_count"] += 1
-                agg["total_quantity"] += int(order_item.quantity or 0)
-                agg["total_spent"] += float(order_item.total_value or 0)
-
-                if order.creation_date:
-                    if not agg["first_purchase_at"] or order.creation_date < agg["first_purchase_at"]:
-                        agg["first_purchase_at"] = order.creation_date
-                    if not agg["last_purchase_at"] or order.creation_date > agg["last_purchase_at"]:
-                        agg["last_purchase_at"] = order.creation_date
-
-                processed += 1
-
-                if processed % 500 == 0:
-                    print(f"Processados {processed} itens...", flush=True)
-
-            print(f"Total agregados: {len(aggregated)}", flush=True)
-
-            # limpa tabela
-            await session.execute(CustomerClosetItem.__table__.delete())
+            # Limpa a tabela consolidada
+            await session.execute(text("DELETE FROM customer_closet_items"))
             await session.commit()
+            print("Tabela customer_closet_items limpa.", flush=True)
 
-            inserted = 0
-
-            for item in aggregated.values():
-                data = item["data"]
-
-                session.add(
-                    CustomerClosetItem(
-                        email=data["email"],
-                        sku_id=data["sku_id"],
-                        product_id=data["product_id"],
-                        ref_id=data["ref_id"],
-                        name=data["name"],
-                        category=data["category"],
-                        department=data["department"],
-                        brand=data["brand"],
-                        image_url=data["image_url"],
-                        product_url=data["product_url"],
-                        purchase_count=item["purchase_count"],
-                        total_quantity=item["total_quantity"],
-                        total_spent=item["total_spent"],
-                        first_purchase_at=item["first_purchase_at"],
-                        last_purchase_at=item["last_purchase_at"],
-                    )
+            insert_sql = text("""
+                INSERT INTO customer_closet_items (
+                    email,
+                    sku_id,
+                    product_id,
+                    ref_id,
+                    name,
+                    category,
+                    department,
+                    brand,
+                    image_url,
+                    product_url,
+                    purchase_count,
+                    total_quantity,
+                    total_spent,
+                    first_purchase_at,
+                    last_purchase_at,
+                    created_at,
+                    updated_at
                 )
+                SELECT
+                    oi.email AS email,
+                    oi.sku_id AS sku_id,
+                    MAX(oi.product_id) AS product_id,
+                    MAX(oi.ref_id) AS ref_id,
+                    MAX(oi.name) AS name,
+                    MAX(oi.category) AS category,
+                    MAX(oi.department) AS department,
+                    MAX(oi.brand) AS brand,
+                    MAX(oi.image_url) AS image_url,
+                    MAX(oi.product_url) AS product_url,
+                    COUNT(*) AS purchase_count,
+                    COALESCE(SUM(oi.quantity), 0) AS total_quantity,
+                    COALESCE(SUM(oi.total_value), 0) AS total_spent,
+                    MIN(o.creation_date) AS first_purchase_at,
+                    MAX(o.creation_date) AS last_purchase_at,
+                    NOW() AS created_at,
+                    NOW() AS updated_at
+                FROM order_items oi
+                INNER JOIN orders o
+                    ON o.order_id = oi.order_id
+                WHERE
+                    o.creation_date >= :cutoff
+                    AND oi.email IS NOT NULL
+                    AND oi.email <> ''
+                    AND COALESCE(LOWER(o.status), '') NOT IN ('canceled', 'cancelado')
+                GROUP BY
+                    oi.email,
+                    oi.sku_id
+            """)
 
-                inserted += 1
+            await session.execute(insert_sql, {"cutoff": cutoff})
+            await session.commit()
+            print("Insert consolidado concluído.", flush=True)
 
-                if inserted % BATCH_SIZE == 0:
-                    await session.commit()
-                    print(f"Inseridos {inserted} itens...", flush=True)
+            count_result = await session.execute(
+                text("SELECT COUNT(*) FROM customer_closet_items")
+            )
+            inserted = count_result.scalar_one()
 
             await mark_sync_success(
                 session=session,
@@ -136,11 +97,11 @@ async def run() -> None:
             )
             await session.commit()
 
-            print(f"Rebuild concluído: {inserted}", flush=True)
+            print(f"Rebuild SQL concluído: {inserted}", flush=True)
 
         except Exception as e:
             await session.rollback()
-            print(f"Erro: {e}", flush=True)
+            print(f"Erro no rebuild SQL: {e}", flush=True)
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise

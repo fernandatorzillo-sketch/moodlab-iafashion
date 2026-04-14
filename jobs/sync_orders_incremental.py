@@ -21,9 +21,9 @@ from services.vtex_oms_service import (
 
 JOB_NAME = "orders_incremental"
 INITIAL_MONTHS_BACK = 24
-CHUNK_DAYS = 7
+CHUNK_DAYS = 3
 PER_PAGE = 100
-MAX_PAGES_PER_CHUNK = 300
+MAX_PAGES_PER_CHUNK = 100
 OVERLAP_HOURS = 2
 
 
