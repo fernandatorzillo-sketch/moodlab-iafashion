@@ -8,8 +8,11 @@
     } catch (e) {}
   }
 
-  function isClosetHash() {
-    return window.location.href.indexOf("#closet") > -1;
+  function isClosetRoute() {
+    return (
+      window.location.hash.indexOf("#/profile") > -1 &&
+      window.location.search.indexOf("tab=closet") > -1
+    );
   }
 
   function showClosetMode() {
@@ -37,7 +40,7 @@
   }
 
   function toggleMoodlabClosetSafe() {
-    if (!isClosetHash()) {
+    if (!isClosetRoute()) {
       showDefaultMode();
       return;
     }

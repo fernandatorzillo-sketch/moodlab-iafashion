@@ -1,7 +1,7 @@
 (function () {
   const CONFIG = {
-    LOGIN_URL: "/login?returnUrl=/_secure/account#/closet",
-    CLOSET_URL: "/_secure/account#/closet",
+    LOGIN_URL: "/login?ReturnUrl=%2f_secure%2faccount%23%2fprofile%3Ftab%3Dcloset",
+    CLOSET_URL: "/_secure/account#/profile?tab=closet",
     BTN_ID: "ml-floating-closet-btn"
   };
 
