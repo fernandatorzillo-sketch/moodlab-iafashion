@@ -1,7 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from models.customer_closet_item import CustomerClosetItem
 from models.order import Order
@@ -11,6 +12,7 @@ from services.sync_control_service import mark_sync_error, mark_sync_success
 
 JOB_NAME = "rebuild_customer_closets"
 MONTHS_BACK = 24
+BATCH_SIZE = 500
 
 
 def utcnow() -> datetime:
@@ -18,24 +20,33 @@ def utcnow() -> datetime:
 
 
 async def run() -> None:
+    print("Iniciando rebuild_customer_closets...", flush=True)
     await init_closet_db()
 
     cutoff = utcnow() - timedelta(days=30 * MONTHS_BACK)
 
     async with AsyncSessionLocal() as session:
         try:
-            result = await session.execute(
+            query = (
                 select(OrderItem, Order)
                 .join(Order, Order.order_id == OrderItem.order_id)
                 .where(Order.creation_date >= cutoff)
             )
 
-            rows = result.all()
-            print(f"Linhas order_items encontradas para rebuild: {len(rows)}")
+            result = await session.stream(query)
 
-            aggregated = {}
+            aggregated = defaultdict(lambda: {
+                "purchase_count": 0,
+                "total_quantity": 0,
+                "total_spent": 0.0,
+                "first_purchase_at": None,
+                "last_purchase_at": None,
+                "data": None,
+            })
 
-            for order_item, order in rows:
+            processed = 0
+
+            async for order_item, order in result:
                 email = (order.email or "").strip().lower()
                 if not email:
                     continue
@@ -44,13 +55,15 @@ async def run() -> None:
                 if status in {"canceled", "cancelado"}:
                     continue
 
-                unique_key = (
+                key = (
                     email,
                     order_item.sku_id or order_item.product_id or order_item.ref_id or order_item.name or "unknown",
                 )
 
-                if unique_key not in aggregated:
-                    aggregated[unique_key] = {
+                agg = aggregated[key]
+
+                if not agg["data"]:
+                    agg["data"] = {
                         "email": email,
                         "sku_id": order_item.sku_id,
                         "product_id": order_item.product_id,
@@ -61,46 +74,46 @@ async def run() -> None:
                         "brand": order_item.brand,
                         "image_url": order_item.image_url,
                         "product_url": order_item.product_url,
-                        "purchase_count": 0,
-                        "total_quantity": 0,
-                        "total_spent": 0.0,
-                        "first_purchase_at": order.creation_date,
-                        "last_purchase_at": order.creation_date,
                     }
 
-                row = aggregated[unique_key]
-                row["purchase_count"] += 1
-                row["total_quantity"] += int(order_item.quantity or 0)
-                row["total_spent"] += float(order_item.total_value or 0)
+                agg["purchase_count"] += 1
+                agg["total_quantity"] += int(order_item.quantity or 0)
+                agg["total_spent"] += float(order_item.total_value or 0)
 
                 if order.creation_date:
-                    if not row["first_purchase_at"] or order.creation_date < row["first_purchase_at"]:
-                        row["first_purchase_at"] = order.creation_date
-                    if not row["last_purchase_at"] or order.creation_date > row["last_purchase_at"]:
-                        row["last_purchase_at"] = order.creation_date
+                    if not agg["first_purchase_at"] or order.creation_date < agg["first_purchase_at"]:
+                        agg["first_purchase_at"] = order.creation_date
+                    if not agg["last_purchase_at"] or order.creation_date > agg["last_purchase_at"]:
+                        agg["last_purchase_at"] = order.creation_date
 
-                if not row["image_url"] and order_item.image_url:
-                    row["image_url"] = order_item.image_url
+                processed += 1
 
-                if not row["product_url"] and order_item.product_url:
-                    row["product_url"] = order_item.product_url
+                if processed % 500 == 0:
+                    print(f"Processados {processed} itens...", flush=True)
 
-            await session.execute(delete(CustomerClosetItem))
+            print(f"Total agregados: {len(aggregated)}", flush=True)
+
+            # limpa tabela
+            await session.execute(CustomerClosetItem.__table__.delete())
+            await session.commit()
 
             inserted = 0
+
             for item in aggregated.values():
+                data = item["data"]
+
                 session.add(
                     CustomerClosetItem(
-                        email=item["email"],
-                        sku_id=item["sku_id"],
-                        product_id=item["product_id"],
-                        ref_id=item["ref_id"],
-                        name=item["name"],
-                        category=item["category"],
-                        department=item["department"],
-                        brand=item["brand"],
-                        image_url=item["image_url"],
-                        product_url=item["product_url"],
+                        email=data["email"],
+                        sku_id=data["sku_id"],
+                        product_id=data["product_id"],
+                        ref_id=data["ref_id"],
+                        name=data["name"],
+                        category=data["category"],
+                        department=data["department"],
+                        brand=data["brand"],
+                        image_url=data["image_url"],
+                        product_url=data["product_url"],
                         purchase_count=item["purchase_count"],
                         total_quantity=item["total_quantity"],
                         total_spent=item["total_spent"],
@@ -108,24 +121,26 @@ async def run() -> None:
                         last_purchase_at=item["last_purchase_at"],
                     )
                 )
+
                 inserted += 1
 
-                if inserted % 500 == 0:
+                if inserted % BATCH_SIZE == 0:
                     await session.commit()
-                    print(f"Checkpoint rebuild closet: {inserted} linhas")
+                    print(f"Inseridos {inserted} itens...", flush=True)
 
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,
                 reference_value=utcnow().isoformat(),
-                notes=f"rows={len(rows)};closet_items={inserted}",
+                notes=f"closet_items={inserted}",
             )
             await session.commit()
 
-            print(f"Rebuild concluído. closet_items={inserted}")
+            print(f"Rebuild concluído: {inserted}", flush=True)
 
         except Exception as e:
             await session.rollback()
+            print(f"Erro: {e}", flush=True)
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise
