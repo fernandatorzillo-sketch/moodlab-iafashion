@@ -4,3 +4,7 @@ from models.sync_control import SyncControl
 from models.order import Order
 from models.order_item import OrderItem
 from models.customer_closet_item import CustomerClosetItem
+from models.catalog_product import CatalogProduct
+from models.inventory_by_sku import InventoryBySku
+from models.customer_recommendation import CustomerRecommendation
+from models.customer_questionnaire_answer import CustomerQuestionnaireAnswer

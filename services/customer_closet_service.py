@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.customer import Customer
 from models.customer_closet_item import CustomerClosetItem
 from services.closet_db import AsyncSessionLocal
+from services.recommendation_service import get_customer_recommendations
 
 
 def normalize_email(email: str) -> str:
@@ -30,6 +31,8 @@ async def get_customer_closet_payload(email: str) -> dict:
     async with AsyncSessionLocal() as session:
         customer = await _get_customer(session, email)
         closet_items = await _get_customer_closet_items(session, email)
+
+    recommendations = await get_customer_recommendations(email)
 
     customer_name = None
     if customer:
@@ -64,11 +67,12 @@ async def get_customer_closet_payload(email: str) -> dict:
         },
         "closet": closet_payload,
         "looks": [],
-        "recommendations": [],
+        "recommendations": recommendations,
         "debug": {
             "email": email,
             "closet_count": len(closet_payload),
-            "message": "Closet lido do banco consolidado.",
+            "recommendation_count": len(recommendations),
+            "message": "Closet e recomendações lidos do banco consolidado.",
         },
     }
 
