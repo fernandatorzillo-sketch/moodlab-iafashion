@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -28,12 +28,22 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
         raw = raw.replace("Z", "+00:00")
 
     try:
-        return datetime.fromisoformat(raw)
+        dt = datetime.fromisoformat(raw)
+
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+        return dt
     except Exception:
         return None
 
 
 def format_vtex_datetime(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
     return dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 

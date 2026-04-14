@@ -1,13 +1,15 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select
-
 from models.customer import Customer
 from models.order import Order
 from models.order_item import OrderItem
 from services.closet_db import AsyncSessionLocal, init_closet_db
-from services.sync_control_service import get_last_reference_value, mark_sync_error, mark_sync_success
+from services.sync_control_service import (
+    get_last_reference_value,
+    mark_sync_error,
+    mark_sync_success,
+)
 from services.vtex_oms_service import (
     cents_to_float,
     fetch_order_detail,
@@ -30,6 +32,8 @@ def utcnow() -> datetime:
 
 
 def dt_to_iso(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat()
 
 
@@ -50,7 +54,10 @@ async def upsert_customer(session, detail: dict) -> None:
 
     customer = await session.get(Customer, email)
     full_name = " ".join(
-        [str(client.get("firstName") or "").strip(), str(client.get("lastName") or "").strip()]
+        [
+            str(client.get("firstName") or "").strip(),
+            str(client.get("lastName") or "").strip(),
+        ]
     ).strip()
 
     if not customer:
@@ -70,7 +77,10 @@ async def upsert_order(session, detail: dict) -> None:
     client = detail.get("clientProfileData") or {}
     email = normalize_email(client.get("email"))
     customer_name = " ".join(
-        [str(client.get("firstName") or "").strip(), str(client.get("lastName") or "").strip()]
+        [
+            str(client.get("firstName") or "").strip(),
+            str(client.get("lastName") or "").strip(),
+        ]
     ).strip()
 
     order = await session.get(Order, order_id)
@@ -85,7 +95,7 @@ async def upsert_order(session, detail: dict) -> None:
     order.last_change = parse_iso_datetime(detail.get("lastChange"))
     order.total_value = cents_to_float(detail.get("value"))
     order.currency_code = to_str(detail.get("storePreferencesData", {}).get("currencyCode")) or "BRL"
-    order.customer_name = customer_name or email.split("@")[0] if email else None
+    order.customer_name = customer_name or (email.split("@")[0] if email else None)
     order.raw_json = detail
 
 
@@ -98,8 +108,10 @@ async def replace_order_items(session, detail: dict) -> None:
     email = normalize_email(client.get("email"))
     created_at_order = parse_iso_datetime(detail.get("creationDate"))
 
-    await session.execute(
-        delete(OrderItem).where(OrderItem.order_id == order_id)
+    existing_items = (
+        await session.execute(
+            OrderItem.__table__.delete().where(OrderItem.order_id == order_id)
+        )
     )
 
     items = detail.get("items") or []
@@ -156,7 +168,7 @@ async def run() -> None:
                 start_dt = parse_iso_datetime(last_reference)
                 if not start_dt:
                     start_dt = utcnow() - timedelta(days=30 * INITIAL_MONTHS_BACK)
-                start_dt = start_dt - timedelta(hours=OVERLAP_HOURS)
+                start_dt = start_dt.replace(tzinfo=timezone.utc) - timedelta(hours=OVERLAP_HOURS)
             else:
                 start_dt = utcnow() - timedelta(days=30 * INITIAL_MONTHS_BACK)
 
@@ -215,6 +227,7 @@ async def run() -> None:
             print(f"Finalizado com sucesso. processed_orders={processed_orders}")
 
         except Exception as e:
+            await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise

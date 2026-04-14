@@ -56,6 +56,7 @@ async def run() -> None:
             print(f"sync_inventory_incremental concluído: {processed}")
 
         except Exception as e:
+            await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise

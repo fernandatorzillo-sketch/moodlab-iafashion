@@ -50,7 +50,9 @@ async def run() -> None:
             inventory_rows = inventory_result.scalars().all()
 
             available_skus = {
-                row.sku_id for row in inventory_rows if int(row.quantity or 0) > 0 and int(row.is_available or 0) == 1
+                row.sku_id
+                for row in inventory_rows
+                if int(row.quantity or 0) > 0 and int(row.is_available or 0) == 1
             }
 
             catalog_result = await session.execute(
@@ -151,6 +153,7 @@ async def run() -> None:
             print(f"rebuild_recommendations concluído: {inserted}")
 
         except Exception as e:
+            await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise

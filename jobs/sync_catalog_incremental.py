@@ -1,5 +1,6 @@
 import asyncio
 
+from models.catalog_product import CatalogProduct
 from services.closet_db import AsyncSessionLocal, init_closet_db
 from services.sync_control_service import mark_sync_error, mark_sync_success
 from services.vtex_catalog_service import (
@@ -7,7 +8,6 @@ from services.vtex_catalog_service import (
     fetch_product_by_id,
     fetch_sku_by_id,
 )
-from models.catalog_product import CatalogProduct
 
 JOB_NAME = "catalog_incremental"
 
@@ -94,6 +94,7 @@ async def run() -> None:
             print(f"sync_catalog_incremental concluído: {total_upserts}")
 
         except Exception as e:
+            await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
             raise
