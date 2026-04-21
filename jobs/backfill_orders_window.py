@@ -75,5 +75,5 @@ async def upsert_order(session, detail: dict) -> None:
         session.add(order)
 
     order.sequence = to_str(detail.get("sequence")) or None
-    order.email = email or None
+    order.email = email or None.
     order.status = to_str(detail.get("status")) or None
