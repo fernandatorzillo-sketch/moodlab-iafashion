@@ -94,7 +94,6 @@ async def upsert_items(session, order_id: str, items: list) -> None:
         order_item = OrderItem(
             order_id=order_id,
             sku_id=to_str(item.get("id")),
-            product_name=item.get("name"),
             quantity=item.get("quantity") or 1,
             price=cents_to_float(item.get("price")),
         )
