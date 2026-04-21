@@ -2,6 +2,8 @@ import asyncio
 import os
 from datetime import datetime, timezone
 
+print("1. arquivo carregado")
+
 from models.customer import Customer
 from models.order import Order
 from models.order_item import OrderItem
@@ -15,18 +17,23 @@ from services.vtex_oms_service import (
     to_str,
 )
 
+print("2. imports concluídos")
+
 PER_PAGE = 100
 MAX_PAGES_PER_WINDOW = 100
 
 
 def get_env_required(name: str) -> str:
+    print(f"3. lendo variável: {name}")
     value = os.getenv(name, "").strip()
     if not value:
         raise Exception(f"Variável obrigatória não configurada: {name}")
+    print(f"3.1 variável ok: {name}={value}")
     return value
 
 
 def parse_window_date(value: str) -> datetime:
+    print(f"4. parseando data: {value}")
     dt = parse_iso_datetime(value)
     if not dt:
         raise Exception(f"Data inválida: {value}")
@@ -95,55 +102,68 @@ async def upsert_items(session, order_id: str, items: list) -> None:
 
 
 async def process_window(date_from: str, date_to: str):
+    print(f"5. iniciando process_window: {date_from} -> {date_to}")
+
     async with AsyncSessionLocal() as session:
         processed = 0
 
         for page in range(1, MAX_PAGES_PER_WINDOW + 1):
-            print(f"Consultando page={page}...")
+            print(f"6. consultando page={page}")
 
-            summaries = await fetch_order_summaries_by_creation_date(
-                date_from=date_from,
-                date_to=date_to,
+            summaries = fetch_order_summaries_by_creation_date(
+                start_dt=parse_window_date(date_from),
+                end_dt=parse_window_date(date_to),
                 page=page,
                 per_page=PER_PAGE,
             )
 
-            if not summaries:
+            orders = summaries.get("list", []) if isinstance(summaries, dict) else []
+            if not orders:
+                print("7. nenhuma ordem encontrada, encerrando")
                 break
 
-            print(f"Page {page}: {len(summaries)} pedido(s)")
+            print(f"8. page {page}: {len(orders)} pedido(s)")
 
-            for summary in summaries:
+            for summary in orders:
                 order_id = summary.get("orderId")
-
-                detail = await fetch_order_detail(order_id)
-                if not detail:
+                if not order_id:
                     continue
 
-                await upsert_customer(session, detail)
-                await upsert_order(session, detail)
-                await upsert_items(session, order_id, detail.get("items") or [])
+                try:
+                    detail = fetch_order_detail(order_id)
+                    if not detail:
+                        print(f"9. detalhe vazio para {order_id}")
+                        continue
 
-                processed += 1
+                    await upsert_customer(session, detail)
+                    await upsert_order(session, detail)
+                    await upsert_items(session, order_id, detail.get("items") or [])
 
-                if processed % 50 == 0:
-                    print(f"Checkpoint parcial: {processed} pedidos processados")
+                    processed += 1
+
+                    if processed % 50 == 0:
+                        print(f"10. checkpoint parcial: {processed}")
+                        await session.commit()
+
+                except Exception as e:
+                    print(f"ERRO ao processar pedido {order_id}: {e}")
 
             await session.commit()
 
-        print(f"Backfill concluído com sucesso. processed_orders={processed}")
+        print(f"11. backfill concluído com sucesso. processed_orders={processed}")
 
 
 async def main():
-    print("🔥 SCRIPT INICIOU")
-
+    print("🔥 MAIN INICIOU")
     await init_closet_db()
+    print("🔥 banco inicializado")
 
-    date_from = get_env_required("BACKFILL_DATE_FROM")
-    date_to = get_env_required("BACKFILL_DATE_TO")
+    date_from = get_env_required("BACKFILL_START")
+    date_to = get_env_required("BACKFILL_END")
 
     await process_window(date_from, date_to)
 
 
 if __name__ == "__main__":
+    print("12. chamando asyncio.run(main())")
     asyncio.run(main())
