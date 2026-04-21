@@ -22,6 +22,11 @@ print("2. imports concluídos")
 PER_PAGE = 100
 MAX_PAGES_PER_WINDOW = 100
 
+IGNORED_STATUSES = {
+    "cancelled",
+    "canceled",
+}
+
 
 def get_env_required(name: str) -> str:
     print(f"3. lendo variável: {name}")
@@ -105,6 +110,7 @@ async def process_window(date_from: str, date_to: str):
 
     async with AsyncSessionLocal() as session:
         processed = 0
+        ignored_canceled = 0
 
         for page in range(1, MAX_PAGES_PER_WINDOW + 1):
             print(f"6. consultando page={page}")
@@ -134,6 +140,12 @@ async def process_window(date_from: str, date_to: str):
                         print(f"9. detalhe vazio para {order_id}")
                         continue
 
+                    status = to_str(detail.get("status")).lower()
+                    if status in IGNORED_STATUSES:
+                        ignored_canceled += 1
+                        print(f"Pedido {order_id} com status '{status}' ignorado.")
+                        continue
+
                     await upsert_customer(session, detail)
                     await upsert_order(session, detail)
                     await upsert_items(session, order_id, detail.get("items") or [])
@@ -149,7 +161,10 @@ async def process_window(date_from: str, date_to: str):
 
             await session.commit()
 
-        print(f"11. backfill concluído com sucesso. processed_orders={processed}")
+        print(
+            f"11. backfill concluído com sucesso. processed_orders={processed}, "
+            f"ignored_canceled={ignored_canceled}"
+        )
 
 
 async def main():
