@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.customer_closet_service import get_customer_closet_payload
+from services.recommendation_service import get_customer_recommendations
 
 router = APIRouter(prefix="/api/v1/customer-closet", tags=["customer-closet"])
 
@@ -59,7 +60,7 @@ async def get_questions():
             },
             {
                 "id": "style",
-                "label": "Qual estilo você quer priorizar hoje?",
+                "label": "Qual linguagem visual você quer priorizar hoje?",
                 "type": "single_select",
                 "options": [
                     {"value": "elegante", "label": "Elegante"},
@@ -74,8 +75,30 @@ async def get_questions():
 
 @router.post("/recommendations")
 async def recommend(payload: RecommendationRequest):
+    email = normalize_email(payload.email)
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail é obrigatório")
+
+    occasion = str(payload.answers.get("occasion") or "").strip().lower()
+    goal = str(payload.answers.get("goal") or "").strip().lower()
+    style = str(payload.answers.get("style") or "").strip().lower()
+
+    recommendations = await get_customer_recommendations(
+        email=email,
+        occasion=occasion,
+        goal=goal,
+        style=style,
+        limit=payload.limit,
+    )
+
     return {
-        "email": normalize_email(payload.email),
-        "recommendations": [],
-        "message": "Pacote 1 entregue. Recomendação inteligente entra no Pacote 2.",
+        "email": email,
+        "answers": {
+            "occasion": occasion,
+            "goal": goal,
+            "style": style,
+        },
+        "count": len(recommendations),
+        "recommendations": recommendations,
+        "message": "Recomendações lidas do banco com filtros da jornada atual.",
     }
