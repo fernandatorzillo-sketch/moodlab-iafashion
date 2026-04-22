@@ -1,6 +1,5 @@
 (function () {
-  const API_BASE = "https://SEU-ENDERECO-DO-BACKEND";
-  const TEST_EMAIL = "shirleyanastacio8@gmail.com";
+  const API_BASE = "https://closet-moodlab.onrender.com";
   const REQUEST_TIMEOUT_MS = 15000;
 
   const BRAND = {
