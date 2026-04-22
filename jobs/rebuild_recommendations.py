@@ -41,22 +41,36 @@ async def fetch_closet_batch(session, emails):
     for r in rows:
         data[r.email].append(
             {
-                "sku_id": r.sku_id,
-                "product_id": r.product_id,
-                "ref_id": r.ref_id,
-                "name": r.name,
-                "category": r.category,
-                "department": r.department,
-                "brand": r.brand,
-                "image_url": r.image_url,
-                "product_url": r.product_url,
+                # ── Identifiers ──────────────────────────────────────────
+                "sku_id":       r.sku_id,
+                "product_id":   r.product_id,
+                "ref_id":       r.ref_id,
+
+                # ── Campos no formato esperado pelo recommendation_engine ─
+                "nome":         r.name,          # engine usa "nome"
+                "name":         r.name,          # fallback
+                "categoria":    r.category,      # engine usa "categoria"
+                "category":     r.category,      # fallback
+                "departamento": r.department,    # engine usa "departamento"
+                "department":   r.department,    # fallback
+                "cor":          getattr(r, "color", ""),   # engine usa "cor"
+                "color":        getattr(r, "color", ""),   # fallback
+                "colecao":      getattr(r, "collection", ""),
+                "estilo":       getattr(r, "style", ""),
+
+                # ── Campos extras ────────────────────────────────────────
+                "brand":        r.brand,
+                "imagem_url":   r.image_url,
+                "image_url":    r.image_url,
+                "link_produto": r.product_url,
+                "product_url":  r.product_url,
                 "product_type": getattr(r, "product_type", ""),
-                "occasion": getattr(r, "occasion", ""),
-                "estamparia": getattr(r, "estamparia", ""),
-                "colors": getattr(r, "color", ""),
-                "size": getattr(r, "size", ""),
+                "occasion":     getattr(r, "occasion", ""),
+                "ocasiao":      getattr(r, "occasion", ""),
+                "estamparia":   getattr(r, "estamparia", ""),
+                "size":         getattr(r, "size", ""),
                 "stock_quantity": 1,
-                "in_stock": True,
+                "in_stock":     True,
             }
         )
     return data
@@ -72,9 +86,13 @@ async def fetch_answers_batch(session, emails):
 
     return {
         r.email: {
-            "goal": r.goal,
-            "occasion": r.occasion,
-            "style": r.style,
+            # ── Campos no formato esperado pelo recommendation_engine ─
+            "objetivo":  r.goal,      # engine usa "objetivo"
+            "goal":      r.goal,      # fallback
+            "ocasiao":   r.occasion,  # engine usa "ocasiao"
+            "occasion":  r.occasion,  # fallback
+            "estilo":    r.style,     # engine usa "estilo"
+            "style":     r.style,     # fallback
         }
         for r in rows
     }
@@ -101,27 +119,42 @@ async def fetch_catalog(session):
         if not sku_id:
             continue
 
-        # evita repetir o mesmo sku várias vezes se houver múltiplos warehouses
+        # Evita repetir o mesmo SKU se houver múltiplos warehouses
         if sku_id in seen_skus:
             continue
         seen_skus.add(sku_id)
 
         catalog.append(
             {
-                "sku_id": product.sku_id,
-                "product_id": product.product_id,
-                "ref_id": product.ref_id,
-                "name": product.name,
-                "category": product.category,
-                "department": product.department,
+                # ── Identifiers ──────────────────────────────────────────
+                "sku_id":       product.sku_id,
+                "product_id":   product.product_id,
+                "ref_id":       product.ref_id,
+
+                # ── Campos no formato esperado pelo recommendation_engine ─
+                "nome":         product.name,        # engine usa "nome"
+                "name":         product.name,        # fallback
+                "categoria":    product.category,    # engine usa "categoria"
+                "category":     product.category,    # fallback
+                "departamento": product.department,  # engine usa "departamento"
+                "department":   product.department,  # fallback
+                "cor":          getattr(product, "color", ""),  # engine usa "cor"
+                "color":        getattr(product, "color", ""),  # fallback
+                "colecao":      getattr(product, "collection", ""),
+                "estilo":       getattr(product, "style", ""),
+
+                # ── Campos extras ────────────────────────────────────────
+                "imagem_url":   product.image_url,
+                "image_url":    product.image_url,
+                "link_produto": product.product_url,
+                "product_url":  product.product_url,
                 "product_type": product.product_type,
-                "occasion": product.occasion,
-                "estamparia": getattr(product, "print_name", ""),
-                "colors": getattr(product, "color", ""),
-                "image_url": product.image_url,
-                "product_url": product.product_url,
+                "occasion":     product.occasion,
+                "ocasiao":      product.occasion,
+                "estamparia":   getattr(product, "print_name", ""),
+                "price":        getattr(product, "price", 0) or 0,
                 "stock_quantity": int(inventory.quantity or 0),
-                "in_stock": int(inventory.quantity or 0) > 0,
+                "in_stock":     int(inventory.quantity or 0) > 0,
             }
         )
 
@@ -140,6 +173,10 @@ async def run():
             print("2. Carregando catálogo com estoque...", flush=True)
             catalog = await fetch_catalog(session)
             print(f"2.1 Catálogo carregado: {len(catalog)} produtos elegíveis", flush=True)
+
+            if not catalog:
+                print("AVISO: catálogo vazio! Verifique se os produtos estão ativos e com estoque.", flush=True)
+                return
 
             if catalog:
                 print(f"2.2 Exemplo de item do catálogo: {catalog[0]}", flush=True)
@@ -171,18 +208,12 @@ async def run():
 
                     answers = answers_map.get(email, {})
 
-                    # DEBUG REAL: somente primeiros lotes / primeiros emails
+                    # DEBUG: primeiros lotes para verificar dados
                     if batch <= 2 and idx < 3:
                         print(f"DEBUG email={email}", flush=True)
                         print(f"DEBUG closet_count={len(closet)}", flush=True)
                         print(f"DEBUG answers={answers}", flush=True)
-                        print(f"DEBUG catalog_count={len(catalog)}", flush=True)
-
-                        if closet:
-                            print(f"DEBUG closet_sample={closet[0]}", flush=True)
-
-                        if catalog:
-                            print(f"DEBUG catalog_sample={catalog[0]}", flush=True)
+                        print(f"DEBUG closet_sample={closet[0]}", flush=True)
 
                     result = build_recommendations(
                         closet_products=closet,
@@ -195,7 +226,6 @@ async def run():
 
                     if batch <= 2 and idx < 3:
                         print(f"DEBUG rec_count={len(recs)}", flush=True)
-                        print(f"DEBUG meta={result.get('meta')}", flush=True)
                         print(f"DEBUG profile={result.get('profile')}", flush=True)
 
                     for r in recs:
@@ -203,16 +233,16 @@ async def run():
                             CustomerRecommendation(
                                 email=email,
                                 sku_id=r.get("sku_id"),
-                                product_id=r.get("product_id"),
+                                product_id=r.get("produto_id") or r.get("product_id"),
                                 ref_id=r.get("ref_id"),
-                                name=r.get("name"),
-                                category=r.get("category"),
-                                department=r.get("department"),
-                                image_url=r.get("image_url"),
-                                product_url=r.get("product_url") or r.get("url"),
-                                reason=r.get("reason"),
+                                name=r.get("nome") or r.get("name"),
+                                category=r.get("categoria") or r.get("category"),
+                                department=r.get("departamento") or r.get("department"),
+                                image_url=r.get("imagem_url") or r.get("image_url"),
+                                product_url=r.get("link_produto") or r.get("product_url"),
+                                reason=r.get("motivo") or r.get("reason"),
                                 recommendation_type=str(
-                                    answers.get("goal") or "engine"
+                                    answers.get("objetivo") or answers.get("goal") or "engine"
                                 ).strip().lower() or "engine",
                                 score=float(r.get("score", 0)),
                             )
@@ -240,7 +270,7 @@ async def run():
             )
             await session.commit()
 
-            print(f"rebuild_recommendations concluído: {inserted}", flush=True)
+            print(f"rebuild_recommendations concluído: {inserted} recomendações geradas.", flush=True)
 
         except Exception as e:
             print(f"ERRO no rebuild_recommendations: {e}", flush=True)
