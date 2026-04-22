@@ -150,14 +150,9 @@ def get_item_identity(item: dict) -> str:
 
 
 def get_complementary_types(product_type: str, department: str) -> list[str]:
-    """
-    Complementaridade real sem fallback:
-    só pontua se houver relação coerente entre os tipos.
-    """
     product_type = normalize_text(product_type)
     department = normalize_text(department)
 
-    # Praia
     if any(x in product_type for x in ["sutia", "sutiã", "top", "cortininha"]):
         return ["calcinha", "bottom", "saida", "saída"]
 
@@ -170,7 +165,6 @@ def get_complementary_types(product_type: str, department: str) -> list[str]:
     if any(x in product_type for x in ["saida", "saída"]):
         return ["sutia", "sutiã", "top", "calcinha", "maiô", "maio"]
 
-    # Feminino / resort / roupa
     if "vestido" in product_type:
         return ["sandalia", "sandália", "bolsa", "acessorio", "acessório"]
 
@@ -183,7 +177,6 @@ def get_complementary_types(product_type: str, department: str) -> list[str]:
     if any(x in product_type for x in ["calca", "calça", "short", "saia"]):
         return ["camisa", "blusa", "top"]
 
-    # Se não souber complementar, não inventa
     return []
 
 
@@ -244,11 +237,11 @@ def build_profile(
 
 
 def score_candidate(candidate: dict, profile: dict) -> tuple[int, list[str]]:
-    score = 0
-    reasons = []
-
     if not is_in_stock(candidate):
         return -999, ["sem estoque"]
+
+    score = 1
+    reasons = []
 
     candidate_department = get_item_department(candidate)
     candidate_type = get_item_type(candidate)
@@ -271,32 +264,26 @@ def score_candidate(candidate: dict, profile: dict) -> tuple[int, list[str]]:
     preferred_colors = profile["preferred_colors"]
     preferred_occasions = profile["preferred_occasions"]
 
-    # 1. Departamento
     if candidate_department and candidate_department in closet_departments:
         score += 4
         reasons.append("conversa com o departamento já presente no closet")
 
-    # 2. Ocasião do closet
     if candidate_occasion and candidate_occasion in closet_occasions:
         score += 4
         reasons.append("mantém coerência com ocasiões já compradas")
 
-    # 3. Ocasião escolhida na jornada atual
     if answer_occasion and candidate_occasion and candidate_occasion == answer_occasion:
         score += 7
         reasons.append("combina com a ocasião escolhida")
 
-    # 4. Ocasiões preferidas históricas
     if candidate_occasion and candidate_occasion in preferred_occasions:
         score += 4
         reasons.append("alinha com ocasiões preferidas")
 
-    # 5. Estamparia
     if candidate_estamparia and candidate_estamparia in closet_estampas:
         score += 3
         reasons.append("mantém linguagem de estamparia coerente")
 
-    # 6. Cores
     if any(color in closet_colors for color in candidate_colors):
         score += 2
         reasons.append("combina com as cores do closet")
@@ -305,28 +292,32 @@ def score_candidate(candidate: dict, profile: dict) -> tuple[int, list[str]]:
         score += 3
         reasons.append("segue cores preferidas")
 
-    # 7. Goal
     if answer_goal == "cross_sell":
         if candidate_type and candidate_type in complementary_targets:
             score += 8
             reasons.append("é uma peça complementar ao que já existe no closet")
+        elif candidate_department and candidate_department in closet_departments:
+            score += 2
+            reasons.append("fica no mesmo universo de compra da cliente")
 
     elif answer_goal == "up_sell":
         if candidate_department and candidate_department in closet_departments:
             score += 3
             reasons.append("mantém o universo de compra da cliente")
 
-        # upsell real: não repetir exatamente o mesmo tipo
         if candidate_type and candidate_type not in closet_types:
             score += 5
             reasons.append("expande o closet com um tipo de peça novo")
+
+        if any(x in candidate_name for x in ["resort", "bordado", "premium", "luxo"]):
+            score += 2
+            reasons.append("tem leitura mais sofisticada")
 
     elif answer_goal == "novidades":
         if candidate_type and candidate_type not in closet_types:
             score += 4
             reasons.append("traz novidade dentro do universo da cliente")
 
-    # 8. Estilo (peso leve, sem inventar)
     if answer_style:
         searchable_text = " ".join(
             [
@@ -337,7 +328,6 @@ def score_candidate(candidate: dict, profile: dict) -> tuple[int, list[str]]:
                 candidate_estamparia,
             ]
         )
-
         if answer_style in searchable_text:
             score += 2
             reasons.append("reforça a linguagem visual buscada")
@@ -381,8 +371,7 @@ def build_recommendations(
 
         score, reasons = score_candidate(candidate, profile)
 
-        # sem fallback
-        if score <= 0:
+        if score < 2:
             continue
 
         enriched = dict(candidate)
