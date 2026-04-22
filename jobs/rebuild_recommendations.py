@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, func, or_, select
 
 from models.catalog_product import CatalogProduct
 from models.customer_closet_item import CustomerClosetItem
@@ -12,6 +12,10 @@ from services.closet_db import AsyncSessionLocal, init_closet_db
 from services.sync_control_service import mark_sync_error, mark_sync_success
 
 JOB_NAME = "rebuild_recommendations"
+
+EMAIL_BATCH_SIZE = 100
+MAX_CANDIDATES_PER_EMAIL = 250
+MAX_RECOMMENDATIONS_PER_EMAIL = 12
 
 
 def normalize(value):
@@ -27,11 +31,18 @@ def text_contains_any(value: str, options: list[str]) -> bool:
     return any(opt in value_norm for opt in options if opt)
 
 
+def unique_preserve(items):
+    seen = set()
+    result = []
+    for item in items:
+        key = normalize(item)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
+
+
 def get_complementary_targets(category: str, department: str, product_type: str) -> list[str]:
-    """
-    Retorna categorias/departamentos/tipos complementares para ajudar no cross sell.
-    A lógica é simples, mas já cria recomendações mais coerentes.
-    """
     cat = normalize(category)
     dept = normalize(department)
     ptype = normalize(product_type)
@@ -39,39 +50,17 @@ def get_complementary_targets(category: str, department: str, product_type: str)
     source = " ".join([cat, dept, ptype])
 
     rules = {
-        "biquini_top": [
-            "calcinha", "bottom", "saida", "acessorio", "acessório", "praia",
-        ],
-        "biquini_bottom": [
-            "sutia", "sutiã", "top", "saida", "acessorio", "acessório", "praia",
-        ],
-        "maio": [
-            "saida", "acessorio", "acessório", "praia",
-        ],
-        "saida_praia": [
-            "biquini", "maiô", "maio", "acessorio", "acessório", "praia",
-        ],
-        "vestido": [
-            "acessorio", "acessório", "calcado", "calçado", "sandalia", "sandália", "bolsa",
-        ],
-        "camisa": [
-            "calca", "calça", "short", "saia", "top", "blusa",
-        ],
-        "blusa": [
-            "calca", "calça", "short", "saia",
-        ],
-        "top": [
-            "calca", "calça", "short", "saia",
-        ],
-        "calca": [
-            "camisa", "blusa", "top",
-        ],
-        "short": [
-            "camisa", "blusa", "top",
-        ],
-        "saia": [
-            "camisa", "blusa", "top",
-        ],
+        "biquini_top": ["calcinha", "bottom", "saida", "saída", "acessorio", "acessório", "praia"],
+        "biquini_bottom": ["sutia", "sutiã", "top", "saida", "saída", "acessorio", "acessório", "praia"],
+        "maio": ["saida", "saída", "acessorio", "acessório", "praia"],
+        "saida_praia": ["biquini", "maiô", "maio", "acessorio", "acessório", "praia"],
+        "vestido": ["acessorio", "acessório", "calcado", "calçado", "sandalia", "sandália", "bolsa"],
+        "camisa": ["calca", "calça", "short", "saia", "top", "blusa"],
+        "blusa": ["calca", "calça", "short", "saia"],
+        "top": ["calca", "calça", "short", "saia"],
+        "calca": ["camisa", "blusa", "top"],
+        "short": ["camisa", "blusa", "top"],
+        "saia": ["camisa", "blusa", "top"],
     }
 
     matched_keys = []
@@ -103,13 +92,10 @@ def get_complementary_targets(category: str, department: str, product_type: str)
     for key in matched_keys:
         result.extend(rules.get(key, []))
 
-    return list(set(result))
+    return unique_preserve(result)
 
 
 def derive_style_tags(product: CatalogProduct) -> set[str]:
-    """
-    Cria tags simples de estilo com base nos campos já existentes.
-    """
     tags = set()
 
     joined = " ".join(
@@ -138,14 +124,6 @@ def derive_style_tags(product: CatalogProduct) -> set[str]:
 
 
 def build_reason(goal: str, occasion: str, style: str, product: CatalogProduct, reason_mode: str) -> str:
-    """
-    reason_mode:
-      - complementary
-      - elevated
-      - affinity
-      - occasion
-      - newness
-    """
     category = safe_text(product.category)
     dept = safe_text(product.department)
     occasion_txt = safe_text(product.occasion)
@@ -199,10 +177,6 @@ def score_candidate(
     occasion: str,
     style: str,
 ) -> tuple[float, str, str]:
-    """
-    Retorna:
-      score, rec_type, reason_mode
-    """
     score = 0.0
     rec_type = "new_in"
     reason_mode = "affinity"
@@ -216,7 +190,6 @@ def score_candidate(
 
     product_style_tags = derive_style_tags(product)
 
-    # Afinidade base
     if product_category and product_category in owned_categories:
         score += 4
 
@@ -226,7 +199,6 @@ def score_candidate(
     if product_brand and product_brand in owned_brands:
         score += 1
 
-    # Ocasião
     if occasion:
         if occasion == product_occasion:
             score += 6
@@ -235,7 +207,6 @@ def score_candidate(
             score += 4
             reason_mode = "occasion"
 
-    # Estilo
     if style:
         style_norm = normalize(style)
         if style_norm in product_style_tags:
@@ -243,7 +214,6 @@ def score_candidate(
         elif style_norm in f"{product_type} {product_name} {product_category}":
             score += 2
 
-    # Goal específico
     if goal == "cross_sell":
         rec_type = "cross_sell"
 
@@ -279,149 +249,253 @@ def score_candidate(
     return score, rec_type, reason_mode
 
 
+def build_candidate_filters(
+    owned_categories: set[str],
+    owned_departments: set[str],
+    owned_brands: set[str],
+    owned_complement_targets: set[str],
+    occasion: str,
+):
+    filters = []
+
+    if owned_categories:
+        filters.append(func.lower(CatalogProduct.category).in_(list(owned_categories)))
+
+    if owned_departments:
+        filters.append(func.lower(CatalogProduct.department).in_(list(owned_departments)))
+
+    if owned_brands:
+        filters.append(func.lower(CatalogProduct.brand).in_(list(owned_brands)))
+
+    if occasion:
+        filters.append(func.lower(CatalogProduct.occasion) == occasion)
+
+    for target in owned_complement_targets:
+        like_value = f"%{normalize(target)}%"
+        filters.append(func.lower(func.coalesce(CatalogProduct.category, "")).like(like_value))
+        filters.append(func.lower(func.coalesce(CatalogProduct.department, "")).like(like_value))
+        filters.append(func.lower(func.coalesce(CatalogProduct.product_type, "")).like(like_value))
+        filters.append(func.lower(func.coalesce(CatalogProduct.name, "")).like(like_value))
+
+    return filters
+
+
+async def fetch_email_batch(session, offset: int, limit: int) -> list[str]:
+    result = await session.execute(
+        select(CustomerClosetItem.email)
+        .where(CustomerClosetItem.email.is_not(None))
+        .distinct()
+        .order_by(CustomerClosetItem.email)
+        .offset(offset)
+        .limit(limit)
+    )
+    return [row[0] for row in result.fetchall() if row[0]]
+
+
+async def fetch_closet_batch(session, emails: list[str]) -> dict[str, list[CustomerClosetItem]]:
+    result = await session.execute(
+        select(CustomerClosetItem).where(CustomerClosetItem.email.in_(emails))
+    )
+    rows = result.scalars().all()
+
+    closet_by_email = defaultdict(list)
+    for row in rows:
+        closet_by_email[row.email].append(row)
+    return closet_by_email
+
+
+async def fetch_answers_batch(session, emails: list[str]) -> dict[str, CustomerQuestionnaireAnswer]:
+    result = await session.execute(
+        select(CustomerQuestionnaireAnswer).where(CustomerQuestionnaireAnswer.email.in_(emails))
+    )
+    rows = result.scalars().all()
+    return {row.email: row for row in rows}
+
+
+async def fetch_candidate_products_for_email(
+    session,
+    owned_skus: set[str],
+    owned_categories: set[str],
+    owned_departments: set[str],
+    owned_brands: set[str],
+    owned_complement_targets: set[str],
+    occasion: str,
+):
+    filters = build_candidate_filters(
+        owned_categories=owned_categories,
+        owned_departments=owned_departments,
+        owned_brands=owned_brands,
+        owned_complement_targets=owned_complement_targets,
+        occasion=occasion,
+    )
+
+    query = (
+        select(CatalogProduct)
+        .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
+        .where(
+            CatalogProduct.is_active == 1,
+            InventoryBySku.is_available == 1,
+            InventoryBySku.quantity > 0,
+            CatalogProduct.sku_id.is_not(None),
+        )
+    )
+
+    if owned_skus:
+        query = query.where(~func.lower(CatalogProduct.sku_id).in_(list(owned_skus)))
+
+    if filters:
+        query = query.where(or_(*filters))
+
+    query = query.limit(MAX_CANDIDATES_PER_EMAIL)
+
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
 async def run() -> None:
     await init_closet_db()
 
     async with AsyncSessionLocal() as session:
         try:
-            print("1. Limpando recomendações antigas...")
+            print("1. Limpando recomendações antigas...", flush=True)
             await session.execute(delete(CustomerRecommendation))
-
-            print("2. Lendo estoque...")
-            inventory_result = await session.execute(select(InventoryBySku))
-            inventory_rows = inventory_result.scalars().all()
-
-            available_skus = {
-                row.sku_id
-                for row in inventory_rows
-                if int(row.quantity or 0) > 0 and int(row.is_available or 0) == 1
-            }
-            print(f"2.1. SKUs disponíveis: {len(available_skus)}")
-
-            print("3. Lendo catálogo ativo...")
-            catalog_result = await session.execute(
-                select(CatalogProduct).where(CatalogProduct.is_active == 1)
-            )
-            catalog_rows = catalog_result.scalars().all()
-            print(f"3.1. Produtos ativos no catálogo: {len(catalog_rows)}")
-
-            print("4. Lendo closet dos clientes...")
-            closet_result = await session.execute(select(CustomerClosetItem))
-            closet_rows = closet_result.scalars().all()
-            print(f"4.1. Itens de closet: {len(closet_rows)}")
-
-            print("5. Lendo respostas do questionário...")
-            answers_result = await session.execute(select(CustomerQuestionnaireAnswer))
-            answers_rows = answers_result.scalars().all()
-            answers_map = {row.email: row for row in answers_rows}
-            print(f"5.1. Clientes com respostas: {len(answers_map)}")
-
-            closet_by_email = defaultdict(list)
-            for row in closet_rows:
-                closet_by_email[row.email].append(row)
+            await session.commit()
 
             inserted = 0
+            offset = 0
+            batch_number = 0
 
-            print(f"6. Gerando recomendações para {len(closet_by_email)} clientes...")
+            while True:
+                batch_number += 1
+                emails = await fetch_email_batch(session, offset=offset, limit=EMAIL_BATCH_SIZE)
 
-            for email, closet_items in closet_by_email.items():
-                owned_skus = {normalize(item.sku_id) for item in closet_items if item.sku_id}
-                owned_categories = {normalize(item.category) for item in closet_items if item.category}
-                owned_departments = {normalize(item.department) for item in closet_items if item.department}
-                owned_brands = {normalize(item.brand) for item in closet_items if item.brand}
+                if not emails:
+                    print("2. Nenhum cliente restante para processar. Encerrando.", flush=True)
+                    break
 
-                owned_complement_targets = set()
-                for item in closet_items:
-                    owned_complement_targets.update(
-                        get_complementary_targets(
-                            category=safe_text(item.category),
-                            department=safe_text(item.department),
-                            product_type=safe_text(getattr(item, "product_type", "")),
+                print(
+                    f"3. Lote {batch_number} | clientes={len(emails)} | offset={offset}",
+                    flush=True,
+                )
+
+                closet_by_email = await fetch_closet_batch(session, emails)
+                answers_map = await fetch_answers_batch(session, emails)
+
+                for email in emails:
+                    closet_items = closet_by_email.get(email, [])
+                    if not closet_items:
+                        continue
+
+                    owned_skus = {normalize(item.sku_id) for item in closet_items if item.sku_id}
+                    owned_categories = {normalize(item.category) for item in closet_items if item.category}
+                    owned_departments = {normalize(item.department) for item in closet_items if item.department}
+                    owned_brands = {normalize(item.brand) for item in closet_items if item.brand}
+
+                    owned_complement_targets = set()
+                    for item in closet_items:
+                        owned_complement_targets.update(
+                            get_complementary_targets(
+                                category=safe_text(item.category),
+                                department=safe_text(item.department),
+                                product_type=safe_text(getattr(item, "product_type", "")),
+                            )
                         )
-                    )
 
-                answers = answers_map.get(email)
-                goal = normalize(answers.goal if answers else "")
-                occasion = normalize(answers.occasion if answers else "")
-                style = normalize(answers.style if answers else "")
+                    answers = answers_map.get(email)
+                    goal = normalize(answers.goal if answers else "")
+                    occasion = normalize(answers.occasion if answers else "")
+                    style = normalize(answers.style if answers else "")
 
-                candidates = []
-
-                for product in catalog_rows:
-                    sku_norm = normalize(product.sku_id)
-                    if not sku_norm or sku_norm in owned_skus:
-                        continue
-
-                    if product.sku_id not in available_skus:
-                        continue
-
-                    score, rec_type, reason_mode = score_candidate(
-                        product=product,
+                    candidate_products = await fetch_candidate_products_for_email(
+                        session=session,
+                        owned_skus=owned_skus,
                         owned_categories=owned_categories,
                         owned_departments=owned_departments,
                         owned_brands=owned_brands,
                         owned_complement_targets=owned_complement_targets,
-                        goal=goal,
                         occasion=occasion,
-                        style=style,
                     )
 
-                    if score <= 0:
-                        continue
+                    candidates = []
 
-                    candidates.append((score, rec_type, reason_mode, product))
-
-                # Ordena por score desc
-                candidates.sort(key=lambda x: x[0], reverse=True)
-
-                # Diversifica o mix final
-                diversified = []
-                category_count = defaultdict(int)
-                department_count = defaultdict(int)
-
-                for score, rec_type, reason_mode, product in candidates:
-                    cat = normalize(product.category)
-                    dept = normalize(product.department)
-
-                    if cat and category_count[cat] >= 3:
-                        continue
-
-                    if dept and department_count[dept] >= 6:
-                        continue
-
-                    diversified.append((score, rec_type, reason_mode, product))
-                    if cat:
-                        category_count[cat] += 1
-                    if dept:
-                        department_count[dept] += 1
-
-                    if len(diversified) >= 12:
-                        break
-
-                for score, rec_type, reason_mode, product in diversified:
-                    session.add(
-                        CustomerRecommendation(
-                            email=email,
-                            sku_id=product.sku_id,
-                            product_id=product.product_id,
-                            ref_id=product.ref_id,
-                            name=product.name,
-                            category=product.category,
-                            department=product.department,
-                            image_url=product.image_url,
-                            product_url=product.product_url,
-                            reason=build_reason(goal, occasion, style, product, reason_mode),
-                            recommendation_type=rec_type,
-                            score=float(score),
+                    for product in candidate_products:
+                        score, rec_type, reason_mode = score_candidate(
+                            product=product,
+                            owned_categories=owned_categories,
+                            owned_departments=owned_departments,
+                            owned_brands=owned_brands,
+                            owned_complement_targets=owned_complement_targets,
+                            goal=goal,
+                            occasion=occasion,
+                            style=style,
                         )
-                    )
-                    inserted += 1
 
-                if inserted > 0 and inserted % 200 == 0:
-                    print(f"Checkpoint parcial de recomendações: {inserted}")
-                    await session.commit()
+                        if score <= 0:
+                            continue
 
-            print(f"7. Marcando sucesso. Total inserido: {inserted}")
+                        candidates.append((score, rec_type, reason_mode, product))
+
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+
+                    diversified = []
+                    category_count = defaultdict(int)
+                    department_count = defaultdict(int)
+
+                    for score, rec_type, reason_mode, product in candidates:
+                        cat = normalize(product.category)
+                        dept = normalize(product.department)
+
+                        if cat and category_count[cat] >= 3:
+                            continue
+
+                        if dept and department_count[dept] >= 6:
+                            continue
+
+                        diversified.append((score, rec_type, reason_mode, product))
+
+                        if cat:
+                            category_count[cat] += 1
+                        if dept:
+                            department_count[dept] += 1
+
+                        if len(diversified) >= MAX_RECOMMENDATIONS_PER_EMAIL:
+                            break
+
+                    for score, rec_type, reason_mode, product in diversified:
+                        session.add(
+                            CustomerRecommendation(
+                                email=email,
+                                sku_id=product.sku_id,
+                                product_id=product.product_id,
+                                ref_id=product.ref_id,
+                                name=product.name,
+                                category=product.category,
+                                department=product.department,
+                                image_url=product.image_url,
+                                product_url=product.product_url,
+                                reason=build_reason(goal, occasion, style, product, reason_mode),
+                                recommendation_type=rec_type,
+                                score=float(score),
+                            )
+                        )
+                        inserted += 1
+
+                    if inserted > 0 and inserted % 200 == 0:
+                        print(
+                            f"4. Checkpoint parcial de recomendações: {inserted}",
+                            flush=True,
+                        )
+                        await session.commit()
+
+                await session.commit()
+                print(
+                    f"5. Lote {batch_number} concluído | total inserido até agora={inserted}",
+                    flush=True,
+                )
+
+                offset += EMAIL_BATCH_SIZE
+
+            print(f"6. Marcando sucesso. Total inserido: {inserted}", flush=True)
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,
@@ -430,10 +504,10 @@ async def run() -> None:
             )
             await session.commit()
 
-            print(f"rebuild_recommendations concluído: {inserted}")
+            print(f"rebuild_recommendations concluído: {inserted}", flush=True)
 
         except Exception as e:
-            print(f"ERRO no rebuild_recommendations: {e}")
+            print(f"ERRO no rebuild_recommendations: {e}", flush=True)
             await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
