@@ -42,13 +42,18 @@ async def run() -> None:
                     payload = fetch_inventory_for_sku(str(sku_id))
                     balances = payload.get("balance") or []
 
-                    if not balances:
-                        # grava ao menos uma linha zerada opcional? agora não
-                        pass
+                    seen = set()
 
                     for balance in balances:
+                        warehouse_id = str(balance.get("warehouseId") or "").strip()
+                        key = (str(sku_id), warehouse_id)
+
+                        # evita duplicidade do mesmo sku + warehouse no mesmo payload
+                        if key in seen:
+                            continue
+                        seen.add(key)
+
                         qty = int(balance.get("totalQuantity") or 0)
-                        warehouse_id = str(balance.get("warehouseId") or "")
 
                         session.add(
                             InventoryBySku(
@@ -77,17 +82,12 @@ async def run() -> None:
                         flush=True,
                     )
 
-                    if error_count % 20 == 0:
-                        await session.commit()
-                        print(
-                            f"8. Checkpoint após erros | processados={processed}/{total_skus} | "
-                            f"linhas_estoque={inserted_rows} | erros={error_count}",
-                            flush=True,
-                        )
+                    # reseta a sessão para continuar processando os próximos SKUs
+                    await session.rollback()
 
             await session.commit()
             print(
-                f"9. Processamento concluído | processados={processed}/{total_skus} | "
+                f"8. Processamento concluído | processados={processed}/{total_skus} | "
                 f"linhas_estoque={inserted_rows} | erros={error_count}",
                 flush=True,
             )
