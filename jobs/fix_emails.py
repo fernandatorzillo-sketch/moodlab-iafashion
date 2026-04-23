@@ -40,11 +40,10 @@ async def fetch_invalid_order_ids(session) -> list[str]:
     print("Buscando pedidos com e-mail inválido...", flush=True)
 
     result = await session.execute(
-        select(OrderItem.order_id, OrderItem.email)
-        .where(OrderItem.email.like("%ct.vtex.com.br"))
-        .union(
-            select(OrderItem.order_id, OrderItem.email)
-            .where(OrderItem.email.like("%act.vtex.com.br"))
+        select(OrderItem.order_id)
+        .where(
+            OrderItem.order_id.is_not(None),
+            OrderItem.email.like("%vtex.com.br"),
         )
         .distinct()
     )
