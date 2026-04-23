@@ -10,7 +10,49 @@ def normalize_text(value: Any) -> str:
 
 
 def normalize_email(email: str) -> str:
-    return normalize_text(email)
+    """
+    Normaliza e valida o e-mail do cliente.
+    
+    Rejeita e-mails técnicos gerados pela VTEX para pedidos
+    B2B, integrações ou operações internas. Esses e-mails
+    seguem o padrão hash@ct.vtex.com.br ou similares e
+    não correspondem a clientes reais.
+    """
+    if not email:
+        return ""
+
+    email = str(email).strip().lower()
+
+    # Rejeita e-mails técnicos da VTEX
+    dominios_tecnicos = [
+        "@ct.vtex.com.br",
+        "@act.vtex.com.br",
+        "@vtex.com.br",
+        "@marketplace.vtex.com.br",
+        "@vtexcommercestable.com.br",
+    ]
+    for dominio in dominios_tecnicos:
+        if email.endswith(dominio):
+            return ""
+
+    # Rejeita strings que não têm formato de e-mail válido
+    if "@" not in email:
+        return ""
+
+    parts = email.split("@")
+    if len(parts) != 2:
+        return ""
+
+    domain = parts[1]
+    if "." not in domain:
+        return ""
+
+    # Rejeita e-mails muito curtos (hashes truncados)
+    local = parts[0]
+    if len(local) < 2:
+        return ""
+
+    return email
 
 
 def to_str(value: Any) -> str:
@@ -29,10 +71,8 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
 
     try:
         dt = datetime.fromisoformat(raw)
-
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-
         return dt
     except Exception:
         return None
@@ -43,7 +83,6 @@ def format_vtex_datetime(dt: datetime) -> str:
         dt = dt.replace(tzinfo=timezone.utc)
     else:
         dt = dt.astimezone(timezone.utc)
-
     return dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
