@@ -36,6 +36,8 @@ async def run() -> None:
             print("Tabela customer_closet_items limpa.", flush=True)
 
             # 2. Consolida usando catalog_products como fonte prioritária para atributos
+            #    CORREÇÃO: filtro AND oi.email NOT LIKE '%vtex.com.br'
+            #    garante que só e-mails reais de clientes entram no closet
             insert_sql = text("""
                 INSERT INTO customer_closet_items (
                     email,
@@ -89,6 +91,7 @@ async def run() -> None:
                     o.creation_date >= :cutoff
                     AND oi.email IS NOT NULL
                     AND TRIM(oi.email) <> ''
+                    AND oi.email NOT LIKE '%vtex.com.br'
                     AND COALESCE(LOWER(o.status), '') NOT IN ('canceled', 'cancelado', 'cancelled')
 
                 GROUP BY
