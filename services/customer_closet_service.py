@@ -1,71 +1,71 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.catalog_product import CatalogProduct
 from models.customer import Customer
 from models.customer_closet_item import CustomerClosetItem
 from services.closet_db import AsyncSessionLocal
 from services.recommendation_service import get_customer_recommendations
 
-# Domínio canônico das imagens VTEX da Água de Coco
-_VTEX_IMAGE_CANONICAL = "aguadecoco.vteximg.com.br"
 
-# Domínios alternativos que a VTEX às vezes devolve mas retornam 404
-_VTEX_IMAGE_ALIASES = [
-    "lojaaguadecoco.vteximg.com.br",
-    "aguadecoco.vtexassets.com",
-    "lojaaguadecoco.vtexassets.com",
-]
+SITE_BASE = "https://www.aguadecoco.com.br"
 
 
 def normalize_email(email: str) -> str:
     return str(email or "").strip().lower()
 
 
-def fix_image_url(url: str) -> str:
-    """
-    Normaliza a URL da imagem VTEX para o domínio canônico.
+def slugify(value: str) -> str:
+    value = str(value or "").strip().lower()
+    replacements = {
+        "á": "a", "à": "a", "ã": "a", "â": "a",
+        "é": "e", "ê": "e",
+        "í": "i",
+        "ó": "o", "õ": "o", "ô": "o",
+        "ú": "u",
+        "ç": "c",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
 
-    O sync_catalog_incremental salva o campo ImageUrl devolvido pela API VTEX,
-    que às vezes usa subdomínios alternativos (lojaaguadecoco.vteximg.com.br,
-    *.vtexassets.com) que retornam 404 em produção.
+    cleaned = []
+    for char in value:
+        if char.isalnum():
+            cleaned.append(char)
+        elif char in [" ", "-", "_", "/"]:
+            cleaned.append("-")
 
-    Também força tamanho 500x500 removendo sufixos de dimensão existentes,
-    garantindo imagens consistentes nos cards do closet.
-    """
+    slug = "".join(cleaned)
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+
+    return slug.strip("-")
+
+
+def fix_image_url(url: str | None) -> str:
     if not url:
         return ""
-
-    url = str(url).strip()
-
-    # Substitui qualquer alias pelo domínio canônico
-    for alias in _VTEX_IMAGE_ALIASES:
-        if alias in url:
-            url = url.replace(alias, _VTEX_IMAGE_CANONICAL)
-            break
-
-    # Normaliza sufixo de dimensão VTEX: /arquivos/ids/NNNNNN[-WxH]/nome.jpg
-    # Remove -WxH existente e adiciona -500-500 para resolução uniforme
-    import re
-    url = re.sub(
-        r"(/arquivos/ids/\d+)(?:-\d+-\d+)?(/[^?#]*)",
-        r"\g<1>-500-500\2",
-        url,
-    )
-
-    return url
+    return str(url).strip()
 
 
-def fix_product_url(url: str) -> str:
-    """
-    Garante que a URL do produto aponta para o site de produção.
-    """
-    if not url:
-        return ""
-    url = str(url).strip()
-    # Se a URL não tem domínio, adiciona o domínio correto
-    if url.startswith("/"):
-        return f"https://aguadecoco.com.br{url}"
-    return url
+def build_product_url(name: str | None, product_id: str | None, url: str | None) -> str:
+    if url:
+        url = str(url).strip()
+        if url.startswith("http"):
+            return url
+        if url.startswith("/"):
+            return f"{SITE_BASE}{url}"
+        return f"{SITE_BASE}/{url.lstrip('/')}"
+
+    if name:
+        slug = slugify(name)
+        if slug:
+            return f"{SITE_BASE}/{slug}/p"
+
+    if product_id:
+        return f"{SITE_BASE}/busca?fq=productId:{product_id}"
+
+    return SITE_BASE
 
 
 async def get_customer_closet_payload(email: str) -> dict:
@@ -81,6 +81,7 @@ async def get_customer_closet_payload(email: str) -> dict:
             "debug": {
                 "email": "",
                 "closet_count": 0,
+                "recommendation_count": 0,
                 "message": "E-mail vazio.",
             },
         }
@@ -89,96 +90,135 @@ async def get_customer_closet_payload(email: str) -> dict:
         customer = await _get_customer(session, email)
         closet_items = await _get_customer_closet_items(session, email)
 
-    recommendations = await get_customer_recommendations(email)
+    recommendations = await get_customer_recommendations(email=email, limit=12)
 
-    customer_name = None
+    customer_name = email.split("@")[0]
     if customer:
-        customer_name = customer.full_name or customer.first_name or email.split("@")[0]
-    else:
-        customer_name = email.split("@")[0]
+        customer_name = customer.full_name or customer.first_name or customer_name
 
-    closet_payload = [
-        {
-            # IDs
-            "id": item.product_id or item.sku_id,
-            "sku_id": item.sku_id,
-            "product_id": item.product_id,
-            "ref_id": item.ref_id,
+    closet_payload = []
+    for item, catalog in closet_items:
+        name = item.name or (catalog.name if catalog else None)
+        product_id = item.product_id or (catalog.product_id if catalog else None)
+        sku_id = item.sku_id or (catalog.sku_id if catalog else None)
+        ref_id = item.ref_id or (catalog.ref_id if catalog else None)
+        category = item.category or (catalog.category if catalog else None)
+        department = item.department or (catalog.department if catalog else None)
+        brand = item.brand or (catalog.brand if catalog else None)
+        image_url = item.image_url or (catalog.image_url if catalog else None)
+        product_url = item.product_url or (catalog.product_url if catalog else None)
 
-            # Nome — compatível com frontend VTEX e MeuClosetPage
-            "nome": item.name,
-            "name": item.name,
+        final_url = build_product_url(name=name, product_id=product_id, url=product_url)
 
-            # Categoria — ambos os formatos
-            "categoria": item.category,
-            "category": item.category,
+        closet_payload.append(
+            {
+                "id": product_id or sku_id,
+                "sku": sku_id,
+                "sku_id": sku_id,
+                "product_id": product_id,
+                "produto_id": product_id,
+                "ref_id": ref_id,
 
-            # Departamento
-            "departamento": item.department,
-            "department": item.department,
+                "nome": name,
+                "name": name,
 
-            # Imagem — ambos os formatos que o frontend usa
-            "imagem_url": fix_image_url(item.image_url),
-            "image_url": fix_image_url(item.image_url),
+                "categoria": category,
+                "category": category,
 
-            # Link — ambos os formatos
-            "link_produto": fix_product_url(item.product_url),
-            "product_url": fix_product_url(item.product_url),
-            "url": fix_product_url(item.product_url),
+                "departamento": department,
+                "department": department,
 
-            # Outros campos
-            "brand": item.brand,
-            "cor": None,
-            "color": None,
-            "preco": None,
-            "price": None,
-            "purchase_count": item.purchase_count,
-            "quantity": item.total_quantity,
-            "total_spent": float(item.total_spent or 0),
-            "last_purchase_at": item.last_purchase_at.isoformat() if item.last_purchase_at else None,
-        }
-        for item in closet_items
-    ]
+                "brand": brand,
 
-    # Formata recomendações compatível com frontend VTEX
-    recs_payload = [
-        {
-            "produto_id": r.get("product_id"),
-            "sku_id": r.get("sku_id"),
-            "ref_id": r.get("ref_id"),
-            "nome": r.get("name"),
-            "name": r.get("name"),
-            "motivo": r.get("reason") or "Selecionado para você",
-            "reason": r.get("reason") or "Selecionado para você",
-            "score": r.get("score", 0),
-            "imagem_url": fix_image_url(r.get("image_url", "")),
-            "image_url": fix_image_url(r.get("image_url", "")),
-            "link_produto": fix_product_url(r.get("url", "") or r.get("product_url", "")),
-            "product_url": fix_product_url(r.get("url", "") or r.get("product_url", "")),
-            "categoria": r.get("category"),
-            "category": r.get("category"),
-            "departamento": r.get("department"),
-            "department": r.get("department"),
-            "price": r.get("price"),
-            "preco": r.get("price"),
-        }
-        for r in recommendations
-    ]
+                "imagem_url": fix_image_url(image_url),
+                "image_url": fix_image_url(image_url),
+
+                "link_produto": final_url,
+                "product_url": final_url,
+                "url": final_url,
+
+                "cor": catalog.color if catalog else None,
+                "color": catalog.color if catalog else None,
+                "tamanho": catalog.size if catalog else None,
+                "size": catalog.size if catalog else None,
+                "colecao": catalog.collection if catalog else None,
+                "collection": catalog.collection if catalog else None,
+
+                "preco": None,
+                "price": None,
+
+                "purchase_count": item.purchase_count,
+                "quantity": item.total_quantity,
+                "total_spent": float(item.total_spent or 0),
+                "last_purchase_at": item.last_purchase_at.isoformat() if item.last_purchase_at else None,
+            }
+        )
+
+    recs_payload = []
+    for r in recommendations:
+        name = r.get("name")
+        product_id = r.get("product_id")
+        product_url = r.get("product_url") or r.get("url")
+        final_url = build_product_url(name=name, product_id=product_id, url=product_url)
+
+        recs_payload.append(
+            {
+                "produto_id": product_id,
+                "product_id": product_id,
+                "sku_id": r.get("sku_id"),
+                "ref_id": r.get("ref_id"),
+
+                "nome": name,
+                "name": name,
+
+                "motivo": r.get("reason") or "Selecionado para você",
+                "reason": r.get("reason") or "Selecionado para você",
+
+                "score": float(r.get("score") or 0),
+
+                "imagem_url": fix_image_url(r.get("image_url")),
+                "image_url": fix_image_url(r.get("image_url")),
+
+                "link_produto": final_url,
+                "product_url": final_url,
+                "url": final_url,
+
+                "categoria": r.get("category"),
+                "category": r.get("category"),
+
+                "departamento": r.get("department"),
+                "department": r.get("department"),
+
+                "recommendation_type": r.get("recommendation_type"),
+                "price": r.get("price"),
+                "preco": r.get("price"),
+            }
+        )
 
     return {
-        "found": len(closet_payload) > 0 or customer is not None,
+        "found": len(closet_payload) > 0,
         "customer": {
             "name": customer_name,
             "email": email,
         },
+
+        # formato base
         "closet": closet_payload,
         "looks": [],
         "recommendations": recs_payload,
+
+        # formato usado pelo React atual
+        "cliente": {
+            "nome": customer_name,
+            "email": email,
+        },
+        "closet_products": closet_payload,
+
         "debug": {
             "email": email,
             "closet_count": len(closet_payload),
             "recommendation_count": len(recs_payload),
-            "message": "Closet e recomendações lidos do banco consolidado.",
+            "message": "Closet e recomendações lidos do banco consolidado com enriquecimento de catálogo.",
         },
     }
 
@@ -192,8 +232,12 @@ async def _get_customer(session: AsyncSession, email: str):
 
 async def _get_customer_closet_items(session: AsyncSession, email: str):
     result = await session.execute(
-        select(CustomerClosetItem)
+        select(CustomerClosetItem, CatalogProduct)
+        .outerjoin(
+            CatalogProduct,
+            CatalogProduct.sku_id == CustomerClosetItem.sku_id,
+        )
         .where(CustomerClosetItem.email == email)
         .order_by(CustomerClosetItem.last_purchase_at.desc().nullslast())
     )
-    return result.scalars().all()
+    return result.all()

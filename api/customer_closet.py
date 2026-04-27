@@ -23,13 +23,38 @@ def normalize_email(email: Any) -> str:
     return str(email or "").strip().lower()
 
 
+def normalize_answers(raw: dict[str, Any] | None) -> dict[str, str]:
+    raw = raw or {}
+    return {
+        "occasion": str(raw.get("occasion") or raw.get("ocasiao") or raw.get("ocasião") or "").strip().lower(),
+        "goal": str(raw.get("goal") or raw.get("objetivo") or "").strip().lower(),
+        "style": str(raw.get("style") or raw.get("estilo") or "").strip().lower(),
+    }
+
+
 @router.post("/lookup")
 async def lookup_customer_closet(payload: LookupRequest):
     email = normalize_email(payload.email)
     if not email:
         raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-    return await get_customer_closet_payload(email)
+    data = await get_customer_closet_payload(email)
+
+    customer = data.get("customer") or {
+        "name": email.split("@")[0],
+        "email": email,
+    }
+
+    return {
+        **data,
+
+        # compatível com MeuClosetPage.tsx
+        "cliente": {
+            "nome": customer.get("name") or email.split("@")[0],
+            "email": customer.get("email") or email,
+        },
+        "closet_products": data.get("closet", []),
+    }
 
 
 @router.get("/questions")
@@ -60,7 +85,7 @@ async def get_questions():
             },
             {
                 "id": "style",
-                "label": "Qual linguagem visual você quer priorizar hoje?",
+                "label": "Qual estilo você quer priorizar hoje?",
                 "type": "single_select",
                 "options": [
                     {"value": "elegante", "label": "Elegante"},
@@ -79,26 +104,26 @@ async def recommend(payload: RecommendationRequest):
     if not email:
         raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-    occasion = str(payload.answers.get("occasion") or "").strip().lower()
-    goal = str(payload.answers.get("goal") or "").strip().lower()
-    style = str(payload.answers.get("style") or "").strip().lower()
+    answers = normalize_answers(payload.answers)
+    limit = max(1, min(int(payload.limit or 8), 24))
 
     recommendations = await get_customer_recommendations(
         email=email,
-        occasion=occasion,
-        goal=goal,
-        style=style,
-        limit=payload.limit,
+        occasion=answers["occasion"],
+        goal=answers["goal"],
+        style=answers["style"],
+        limit=limit,
     )
 
     return {
         "email": email,
-        "answers": {
-            "occasion": occasion,
-            "goal": goal,
-            "style": style,
-        },
+        "answers": answers,
         "count": len(recommendations),
         "recommendations": recommendations,
-        "message": "Recomendações lidas do banco com filtros da jornada atual.",
+        "debug": {
+            "email": email,
+            "limit": limit,
+            "recommendation_count": len(recommendations),
+            "message": "Recomendações lidas do banco consolidado.",
+        },
     }
