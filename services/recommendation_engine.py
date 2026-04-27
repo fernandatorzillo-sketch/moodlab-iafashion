@@ -3,6 +3,42 @@ from typing import Any
 
 
 # ─────────────────────────────────────────────────────────────
+# CATEGORIAS DE MODA PERMITIDAS
+# Qualquer produto cujo category E department não estejam nesta
+# lista será bloqueado, evitando que produtos de Casa/Lifestyle
+# apareçam nas recomendações de clientes de moda.
+# ─────────────────────────────────────────────────────────────
+
+FASHION_CATEGORIES = {
+    # Beachwear
+    "beachwear", "maio", "saida_praia", "saida de praia",
+    # Vestuário
+    "vestido", "saia", "blusa", "calca", "short", "camisa",
+    "macacao", "conjunto", "kimono", "casaco",
+    # Acessórios
+    "acessorio", "calcado", "joias",
+    # Outros moda
+    "roupa", "feminino", "masculino", "infantil", "outros",
+}
+
+FASHION_DEPARTMENTS = {
+    "beachwear", "feminino", "masculino", "infantil",
+    "roupa", "moda", "vestuario", "vestuário",
+    "acessorios", "acessórios", "calcados", "calçados",
+    "joias", "jóias",
+}
+
+NON_FASHION_KEYWORDS = {
+    "bandeja", "vaso", "vela", "taca", "taça", "castical",
+    "castiçal", "prato", "xicara", "xícara", "caneca", "jarra",
+    "copo", "porta-retrato", "porta retrato", "toalha de mesa",
+    "jogo americano", "cesta", "difusor", "almofada", "manta",
+    "panela", "bowl", "bule", "saladeira", "fruteira",
+    "mini vaso", "corel", "coral sandi", "sandi",
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # UTILITÁRIOS
 # ─────────────────────────────────────────────────────────────
 
@@ -321,16 +357,43 @@ def candidate_blocked(
 ) -> bool:
     category   = product_category(candidate)
     department = product_department(candidate)
+    name_norm  = normalize_text(product_name(candidate))
 
-    # Bloqueia categorias explicitamente bloqueadas
+    # Bloqueia por nome — produtos de casa/lifestyle que não são moda
+    for kw in NON_FASHION_KEYWORDS:
+        if kw in name_norm:
+            return True
+
+    # Bloqueia categorias explicitamente bloqueadas (ex: "casa")
     if category in rules["blocked_categories"]:
         return True
 
-    # Bloqueia itens de casa (não é moda)
-    if department == "casa" or category == "casa":
+    # Bloqueia itens de casa/lifestyle pelo departamento ou categoria
+    NON_FASHION_DEPTS = {"casa", "lifestyle", "decor", "decoracao", "decoração",
+                         "utilidades", "cozinha", "banheiro", "quarto", "sala"}
+    if department in NON_FASHION_DEPTS or category in NON_FASHION_DEPTS:
         return True
 
-    # Se há categorias permitidas definidas, filtra por elas
+    # Whitelist: se categoria E departamento são desconhecidos E o nome não
+    # contém nenhuma palavra de moda → bloqueia (produtos estranhos no catálogo)
+    is_fashion_category   = category in FASHION_CATEGORIES
+    is_fashion_department = department in FASHION_DEPARTMENTS
+
+    if not is_fashion_category and not is_fashion_department:
+        # Verifica se ao menos o nome tem palavras de moda
+        FASHION_NAME_KEYWORDS = {
+            "biquini", "biquíni", "maio", "maiô", "vestido", "saia", "blusa",
+            "calca", "calça", "short", "camisa", "camiseta", "macacao", "macacão",
+            "saida", "saída", "canga", "kimono", "casaco", "sandalia", "sandália",
+            "chinelo", "rasteira", "oculos", "óculos", "bolsa", "chapeu", "chapéu",
+            "sutia", "sutiã", "calcinha", "cropped", "top ", " top", "conjunto",
+            "bermuda", "jaqueta", "colar", "brinco", "anel", "pulseira",
+        }
+        has_fashion_name = any(kw in name_norm for kw in FASHION_NAME_KEYWORDS)
+        if not has_fashion_name:
+            return True
+
+    # Se há categorias permitidas definidas (filtro do quiz), aplica
     allowed = rules["allowed_categories"]
     if allowed and category not in allowed:
         return True
