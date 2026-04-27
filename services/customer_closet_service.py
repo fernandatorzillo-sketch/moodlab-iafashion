@@ -6,6 +6,16 @@ from models.customer_closet_item import CustomerClosetItem
 from services.closet_db import AsyncSessionLocal
 from services.recommendation_service import get_customer_recommendations
 
+# Domínio canônico das imagens VTEX da Água de Coco
+_VTEX_IMAGE_CANONICAL = "aguadecoco.vteximg.com.br"
+
+# Domínios alternativos que a VTEX às vezes devolve mas retornam 404
+_VTEX_IMAGE_ALIASES = [
+    "lojaaguadecoco.vteximg.com.br",
+    "aguadecoco.vtexassets.com",
+    "lojaaguadecoco.vtexassets.com",
+]
+
 
 def normalize_email(email: str) -> str:
     return str(email or "").strip().lower()
@@ -13,14 +23,36 @@ def normalize_email(email: str) -> str:
 
 def fix_image_url(url: str) -> str:
     """
-    Garante que a URL da imagem usa o domínio correto da VTEX.
-    Algumas imagens estão salvas com 'lojaaguadecoco.vteximg.com.br'
-    que pode retornar 404. Mantém o domínio original mas adiciona
-    fallback para imagens inativas.
+    Normaliza a URL da imagem VTEX para o domínio canônico.
+
+    O sync_catalog_incremental salva o campo ImageUrl devolvido pela API VTEX,
+    que às vezes usa subdomínios alternativos (lojaaguadecoco.vteximg.com.br,
+    *.vtexassets.com) que retornam 404 em produção.
+
+    Também força tamanho 500x500 removendo sufixos de dimensão existentes,
+    garantindo imagens consistentes nos cards do closet.
     """
     if not url:
         return ""
-    return str(url).strip()
+
+    url = str(url).strip()
+
+    # Substitui qualquer alias pelo domínio canônico
+    for alias in _VTEX_IMAGE_ALIASES:
+        if alias in url:
+            url = url.replace(alias, _VTEX_IMAGE_CANONICAL)
+            break
+
+    # Normaliza sufixo de dimensão VTEX: /arquivos/ids/NNNNNN[-WxH]/nome.jpg
+    # Remove -WxH existente e adiciona -500-500 para resolução uniforme
+    import re
+    url = re.sub(
+        r"(/arquivos/ids/\d+)(?:-\d+-\d+)?(/[^?#]*)",
+        r"\g<1>-500-500\2",
+        url,
+    )
+
+    return url
 
 
 def fix_product_url(url: str) -> str:
@@ -134,7 +166,7 @@ async def get_customer_closet_payload(email: str) -> dict:
     ]
 
     return {
-        "found": len(closet_payload) > 0,
+        "found": len(closet_payload) > 0 or customer is not None,
         "customer": {
             "name": customer_name,
             "email": email,

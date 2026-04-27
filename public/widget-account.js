@@ -401,10 +401,16 @@
     const category = escapeHtml(item.category || item.categoria || item.department || "");
     const title = escapeHtml(item.name || item.nome || "Produto");
     const reason = escapeHtml(item.reason || "");
-    const imageUrl = item.image_url || item.imagem_url || "";
+    const rawImageUrl = item.image_url || item.imagem_url || "";
+    const imageUrl = rawImageUrl
+      .replace("lojaaguadecoco.vteximg.com.br", "aguadecoco.vteximg.com.br")
+      .replace("lojaaguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
+      .replace("aguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
+      .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
+    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23f3ede4'/%3E%3Ctext x='50' y='55' font-family='Arial' font-size='11' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
     const image = imageUrl
-      ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" />`
-      : `<div>Sem imagem</div>`;
+      ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
+      : `<img src="${placeholderSvg}" alt="Sem imagem" />`;
     const url = item.url || item.link_produto || "#";
 
     return `
