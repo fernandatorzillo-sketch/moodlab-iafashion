@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import settings
 from api.customer_closet import router as customer_closet_router
+from api.image_proxy import router as image_proxy_router
 
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 app.include_router(customer_closet_router)
+app.include_router(image_proxy_router)
 
 app.mount("/public", StaticFiles(directory="public"), name="public")
 

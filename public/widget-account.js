@@ -289,7 +289,11 @@
     `;
   }
 
-  function getLoggedEmail() {
+  function isValidEmail(str) {
+    return typeof str === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(str.trim());
+  }
+
+  function getLoggedEmailSync() {
     try {
       const fromCheckout =
         window.vtexjs &&
@@ -297,18 +301,38 @@
         window.vtexjs.checkout.orderForm &&
         window.vtexjs.checkout.orderForm.clientProfileData &&
         window.vtexjs.checkout.orderForm.clientProfileData.email;
+      if (isValidEmail(fromCheckout)) return String(fromCheckout).trim();
 
-      if (fromCheckout) return String(fromCheckout).trim();
+      const fromTheme =
+        window.aguadecoco &&
+        (window.aguadecoco.userEmail || window.aguadecoco.email ||
+         (window.aguadecoco.user && window.aguadecoco.user.email));
+      if (isValidEmail(fromTheme)) return String(fromTheme).trim();
+
+      if (isValidEmail(window.janus_app_user_email)) return String(window.janus_app_user_email).trim();
+
+      const metaEmail = document.querySelector('meta[name="user-email"], [data-user-email]');
+      if (metaEmail) {
+        const val = metaEmail.getAttribute("content") || metaEmail.getAttribute("data-user-email");
+        if (isValidEmail(val)) return val.trim();
+      }
 
       const pageText = document.body ? document.body.innerText : "";
-      const match = pageText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-      if (match && match[0]) return match[0].trim();
-
-      const mailto = document.querySelector('a[href^="mailto:"]');
-      if (mailto) {
-        const href = mailto.getAttribute("href") || "";
-        const email = href.replace(/^mailto:/i, "").trim();
-        if (email) return email;
+      const emailRegex = /\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/gi;
+      let m;
+      while ((m = emailRegex.exec(pageText)) !== null) {
+        const candidate = m[0].trim().toLowerCase();
+        if (
+          !candidate.includes("vtex.com.br") &&
+          !candidate.includes("@aguadecoco.com.br") &&
+          !candidate.includes("@sentry") &&
+          !candidate.includes("@facebook") &&
+          !candidate.includes("@google") &&
+          !candidate.includes("@pinterest") &&
+          isValidEmail(candidate)
+        ) {
+          return candidate;
+        }
       }
 
       return "";
@@ -317,9 +341,33 @@
     }
   }
 
+  async function getEmailFromSession() {
+    try {
+      const res = await fetch("/api/sessions?items=profile.email", {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return "";
+      const data = await res.json();
+      const email =
+        data &&
+        data.namespaces &&
+        data.namespaces.profile &&
+        data.namespaces.profile.email &&
+        data.namespaces.profile.email.value;
+      if (isValidEmail(email)) return String(email).trim();
+      return "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   async function waitForEmail(maxAttempts, delayMs) {
+    const sessionEmail = await getEmailFromSession();
+    if (sessionEmail) return sessionEmail;
+
     for (let i = 0; i < maxAttempts; i++) {
-      const email = getLoggedEmail();
+      const email = getLoggedEmailSync();
       if (email) return email;
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -407,10 +455,15 @@
       .replace("lojaaguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
       .replace("aguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
       .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
-    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23f3ede4'/%3E%3Ctext x='50' y='55' font-family='Arial' font-size='11' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
-    const image = imageUrl
-      ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
-      : `<img src="${placeholderSvg}" alt="Sem imagem" />`;
+    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
+    // Usa proxy server-side quando a URL é da vteximg (evita bloqueios cross-origin)
+    const isVtexImage = imageUrl && imageUrl.includes("vteximg.com.br");
+    const finalImageUrl = isVtexImage
+      ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
+      : imageUrl;
+    const image = finalImageUrl
+      ? `<img src="${escapeHtml(finalImageUrl)}" alt="${title}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
+      : `<img src="${placeholderSvg}" alt="Sem imagem" />`
     const url = item.url || item.link_produto || "#";
 
     return `
