@@ -1,76 +1,100 @@
-from sqlalchemy import select
-from services.closet_db import AsyncSessionLocal
-from models.customer_recommendation import CustomerRecommendation
+from services.catalog_service import get_full_catalog
 
 
 def normalize(value):
     return str(value or "").strip().lower()
 
 
-async def get_customer_recommendations(
-    email: str,
-    occasion: str = "",
-    goal: str = "",
-    style: str = "",
-    limit: int = 8,
-) -> list[dict]:
-    email = normalize(email)
-    occasion = normalize(occasion)
-    goal = normalize(goal)
-    style = normalize(style)
+def extract_category(name):
+    name = normalize(name)
 
-    async with AsyncSessionLocal() as session:
-        query = select(CustomerRecommendation).where(
-            CustomerRecommendation.email == email
-        )
+    if "biquini" in name:
+        return "biquini"
+    if "maio" in name:
+        return "maio"
+    if "vestido" in name:
+        return "vestido"
+    if "short" in name:
+        return "short"
+    if "saia" in name:
+        return "saia"
+    if "blusa" in name or "top" in name:
+        return "top"
 
-        if goal:
-            query = query.where(CustomerRecommendation.recommendation_type == goal)
+    return "outros"
 
-        query = query.order_by(CustomerRecommendation.score.desc())
 
-        result = await session.execute(query)
-        items = result.scalars().all()
+def extract_color(name):
+    name = normalize(name)
 
-    recommendations = []
+    cores = ["preto", "branco", "off white", "verde", "azul", "rosa"]
 
-    for item in items:
-        reason_text = normalize(item.reason)
-        category_text = normalize(item.category)
-        department_text = normalize(item.department)
-        name_text = normalize(item.name)
+    for cor in cores:
+        if cor in name:
+            return cor
 
-        # filtro leve por ocasião
-        if occasion:
-            searchable_text = " ".join([reason_text, category_text, department_text, name_text])
-            if occasion not in searchable_text:
-                continue
+    return "neutro"
 
-        # filtro leve por estilo
-        if style:
-            searchable_text = " ".join([reason_text, category_text, department_text, name_text])
-            if style not in searchable_text:
-                # não elimina imediatamente se houver score bom
-                if float(item.score or 0) < 6:
-                    continue
 
-        recommendations.append(
-            {
-                "sku_id": item.sku_id,
-                "product_id": item.product_id,
-                "ref_id": item.ref_id,
-                "name": item.name,
-                "category": item.category,
-                "department": item.department,
-                "image_url": item.image_url,
-                "url": item.product_url,
-                "reason": item.reason,
-                "recommendation_type": item.recommendation_type,
-                "score": float(item.score or 0),
-            }
-        )
+def build_profile(closet):
+    categories = []
+    colors = []
 
-        if len(recommendations) >= limit:
-            break
+    for item in closet:
+        name = item.get("nome") or item.get("name")
 
-    return recommendations
+        cat = extract_category(name)
+        color = extract_color(name)
+
+        categories.append(cat)
+        colors.append(color)
+
+    return {
+        "categories": list(set(categories)),
+        "colors": list(set(colors)),
+    }
+
+
+async def get_customer_recommendations(email: str, limit=12, **kwargs):
+    from services.customer_closet_service import get_customer_closet_payload
+
+    data = await get_customer_closet_payload(email)
+
+    closet = data.get("closet", [])
+
+    if not closet:
+        return []
+
+    profile = build_profile(closet)
+
+    catalog = await get_full_catalog()
+
+    results = []
+
+    for product in catalog:
+        name = product.get("name")
+
+        product_cat = extract_category(name)
+        product_color = extract_color(name)
+
+        score = 0
+
+        if product_cat in profile["categories"]:
+            score += 2
+
+        if product_color in profile["colors"]:
+            score += 1
+
+        if score >= 2:
+            results.append({
+                "product_id": product.get("product_id"),
+                "name": name,
+                "image_url": product.get("image_url"),
+                "product_url": product.get("product_url"),
+                "score": score,
+                "reason": "Combina com seu estilo e compras anteriores",
+            })
+
+    results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+    return results[:limit]
