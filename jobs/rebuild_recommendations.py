@@ -62,8 +62,18 @@ async def fetch_closet_batch(session, emails):
                 "brand":        r.brand,
                 "imagem_url":   r.image_url,
                 "image_url":    r.image_url,
-                "link_produto": r.product_url,
-                "product_url":  r.product_url,
+                "link_produto": (
+                    r.product_url if r.product_url and r.product_url.startswith("http")
+                    else ("https://www.aguadecoco.com.br" + r.product_url
+                          if r.product_url and r.product_url.startswith("/")
+                          else None)
+                ),
+                "product_url": (
+                    r.product_url if r.product_url and r.product_url.startswith("http")
+                    else ("https://www.aguadecoco.com.br" + r.product_url
+                          if r.product_url and r.product_url.startswith("/")
+                          else None)
+                ),
                 "product_type": getattr(r, "product_type", ""),
                 "occasion":     getattr(r, "occasion", ""),
                 "ocasiao":      getattr(r, "occasion", ""),
@@ -99,23 +109,6 @@ async def fetch_answers_batch(session, emails):
 
 
 async def fetch_catalog(session):
-    from sqlalchemy import func, not_
-
-    NON_FASHION_PATTERNS = [
-        "%bandeja%", "%castical%", "%castiçal%", "%difusor%",
-        "%porta-retrato%", "%porta retrato%", "%guardanapo%",
-        "%toalha de mesa%", "%corel sandi%", "%coral sandi%",
-        "%sandi med%", "%sandi ned%", "%vaso %", "% vaso%",
-        "% vela%", "%vela %", "%jarra%", "%cesto %",
-    ]
-    non_fashion_filter = ~func.lower(
-        func.coalesce(CatalogProduct.name, "")
-    ).like("%bandeja%")
-    for pat in NON_FASHION_PATTERNS[1:]:
-        non_fashion_filter = non_fashion_filter & ~func.lower(
-            func.coalesce(CatalogProduct.name, "")
-        ).like(pat)
-
     result = await session.execute(
         select(CatalogProduct, InventoryBySku)
         .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
@@ -123,7 +116,6 @@ async def fetch_catalog(session):
             CatalogProduct.is_active == 1,
             InventoryBySku.is_available == 1,
             InventoryBySku.quantity > 0,
-            non_fashion_filter,
         )
     )
 
@@ -164,8 +156,18 @@ async def fetch_catalog(session):
                 # ── Campos extras ────────────────────────────────────────
                 "imagem_url":   product.image_url,
                 "image_url":    product.image_url,
-                "link_produto": product.product_url,
-                "product_url":  product.product_url,
+                "link_produto": (
+                    product.product_url if product.product_url and product.product_url.startswith("http")
+                    else ("https://www.aguadecoco.com.br" + product.product_url
+                          if product.product_url and product.product_url.startswith("/")
+                          else None)
+                ),
+                "product_url": (
+                    product.product_url if product.product_url and product.product_url.startswith("http")
+                    else ("https://www.aguadecoco.com.br" + product.product_url
+                          if product.product_url and product.product_url.startswith("/")
+                          else None)
+                ),
                 "product_type": product.product_type,
                 "occasion":     product.occasion,
                 "ocasiao":      product.occasion,
@@ -267,7 +269,7 @@ async def run():
                         )
                         inserted += 1
 
-                    if inserted > 0 and inserted % 200 == 0:
+                    if inserted > 0 and inserted % 50 == 0:
                         print(f"Checkpoint: {inserted}", flush=True)
                         await session.commit()
 

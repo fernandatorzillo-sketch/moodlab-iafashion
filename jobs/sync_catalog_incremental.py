@@ -9,7 +9,6 @@ from services.vtex_catalog_service import (
     fetch_product_and_sku_ids,
     fetch_product_by_id,
     fetch_sku_by_id,
-    get_fashion_category_ids,
 )
 
 print("2. imports concluídos")
@@ -39,123 +38,82 @@ async def run() -> None:
     async with AsyncSessionLocal() as session:
         print("5. sessão aberta")
         try:
+            start = 0
             page_size = 100
             total_upserts = 0
 
-            # Descobre departamentos de moda (exclui Casa, Lifestyle etc.)
-            print("5.1 descobrindo categorias de moda...")
-            fashion_category_ids = get_fashion_category_ids()
-            if fashion_category_ids:
-                print(f"5.2 categorias de moda encontradas: {fashion_category_ids}")
-            else:
-                print("5.2 nenhuma categoria específica — sincronizando tudo")
-                fashion_category_ids = [None]  # None = sem filtro de categoria
+            print(f"6. início do loop | start={start} | page_size={page_size}")
 
-            print(f"6. início do loop | page_size={page_size}")
+            while True:
+                print(f"7. buscando faixa catálogo: {start} até {start + page_size - 1}")
+                payload = fetch_product_and_sku_ids(start, start + page_size - 1)
+                print("8. payload recebido de fetch_product_and_sku_ids")
 
-            for category_id in fashion_category_ids:
-                cat_label = f"categoria={category_id}" if category_id else "todas"
-                print(f"6.1 iniciando sync para {cat_label}")
-                start = 0
+                data = payload.get("data") or {}
+                print(f"9. quantidade de products na faixa: {len(data)}")
 
-                while True:
-                    print(f"7. buscando faixa {cat_label}: {start} até {start + page_size - 1}")
-                    payload = fetch_product_and_sku_ids(start, start + page_size - 1, category_id=category_id)
-                    print("8. payload recebido de fetch_product_and_sku_ids")
+                if not data:
+                    print("10. sem dados, encerrando loop")
+                    break
 
-                    data = payload.get("data") or {}
-                    print(f"9. quantidade de products na faixa: {len(data)}")
+                for product_id, sku_ids in data.items():
+                    try:
+                        print(f"11. processando product_id={product_id}")
 
-                    if not data:
-                        print(f"10. sem dados para {cat_label}, seguindo para próxima categoria")
-                        break
+                        product = fetch_product_by_id(str(product_id))
+                        print(f"12. product carregado | product_id={product_id}")
 
-                    for product_id, sku_ids in data.items():
-                        try:
-                            print(f"11. processando product_id={product_id}")
+                        first_sku = None
+                        sku_list = sku_ids or []
+                        if sku_list:
+                            print(f"13. sku principal encontrado | sku_id={sku_list[0]}")
+                            first_sku = fetch_sku_by_id(str(sku_list[0]))
+                            print(f"14. sku carregado | sku_id={sku_list[0]}")
+                        else:
+                            print(f"13. sem sku_list para product_id={product_id}")
 
-                            product = fetch_product_by_id(str(product_id))
-                            print(f"12. product carregado | product_id={product_id}")
+                        row = await session.get(CatalogProduct, str(product_id))
+                        if not row:
+                            row = CatalogProduct(product_id=str(product_id))
+                            session.add(row)
+                            print(f"15. novo CatalogProduct criado | product_id={product_id}")
+                        else:
+                            print(f"15. CatalogProduct existente | product_id={product_id}")
 
-                            first_sku = None
-                            sku_list = sku_ids or []
-                            if sku_list:
-                                print(f"13. sku principal encontrado | sku_id={sku_list[0]}")
-                                first_sku = fetch_sku_by_id(str(sku_list[0]))
-                                print(f"14. sku carregado | sku_id={sku_list[0]}")
-                            else:
-                                print(f"13. sem sku_list para product_id={product_id}")
+                        row.ref_id = str(product.get("RefId") or "") or None
+                        row.sku_id = str(first_sku.get("Id") or "") if first_sku else None
+                        row.name = product.get("Name")
+                        row.brand = product.get("BrandName")
+                        row.department = product.get("DepartmentName")
+                        row.category = product.get("CategoryName")
+                        row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
+                        row.occasion = extract_first_spec(product, ["ocasião", "ocasiao"])
+                        row.color = extract_first_spec(product, ["cor", "cores"])
+                        row.print_name = extract_first_spec(product, ["estamparia"])
+                        row.size = extract_first_spec(product, ["tamanho"])
+                        row.gender = extract_first_spec(product, ["gênero", "genero"])
+                        row.collection = extract_first_spec(product, ["coleção", "colecao"])
+                        row.image_url = (first_sku or {}).get("ImageUrl")
+                        row.product_url = product.get("DetailUrl")
+                        row.is_active = 1
+                        row.raw_json = {
+                            "product": product,
+                            "sku": first_sku,
+                        }
 
-                            row = await session.get(CatalogProduct, str(product_id))
-                            if not row:
-                                row = CatalogProduct(product_id=str(product_id))
-                                session.add(row)
-                                print(f"15. novo CatalogProduct criado | product_id={product_id}")
-                            else:
-                                print(f"15. CatalogProduct existente | product_id={product_id}")
+                        total_upserts += 1
 
-                            row.ref_id = str(product.get("RefId") or "") or None
-                            row.sku_id = str(first_sku.get("Id") or "") if first_sku else None
-                            row.name = product.get("Name")
-                            row.brand = product.get("BrandName")
-                            row.department = product.get("DepartmentName")
-                            row.category = product.get("CategoryName")
-                            row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
-                            row.occasion = extract_first_spec(product, ["ocasião", "ocasiao"])
-                            row.color = extract_first_spec(product, ["cor", "cores"])
-                            row.print_name = extract_first_spec(product, ["estamparia"])
-                            row.size = extract_first_spec(product, ["tamanho"])
-                            row.gender = extract_first_spec(product, ["gênero", "genero"])
-                            row.collection = extract_first_spec(product, ["coleção", "colecao"])
-                            row.image_url = (first_sku or {}).get("ImageUrl")
-                            row.product_url = product.get("DetailUrl")
-                            row.is_active = 1
-                            row.raw_json = {
-                                "product": product,
-                                "sku": first_sku,
-                            }
+                        if total_upserts % 100 == 0:
+                            print(f"16. checkpoint commit | total_upserts={total_upserts}")
+                            await session.commit()
 
-                            total_upserts += 1
+                    except Exception as item_error:
+                        print(f"ERRO ao processar product_id={product_id}: {item_error}")
 
-                            if total_upserts % 100 == 0:
-                                print(f"16. checkpoint commit | total_upserts={total_upserts}")
-                                await session.commit()
+                start += page_size
+                print(f"17. próxima faixa | start={start}")
 
-                        except Exception as item_error:
-                            print(f"ERRO ao processar product_id={product_id}: {item_error}")
-
-                    start += page_size
-                    print(f"17. próxima faixa | start={start}")
-
-            # Desativa produtos que NÃO pertencem às categorias de moda sincronizadas.
-            # O upsert acima só atualiza/insere — produtos antigos de Casa/Lifestyle
-            # permanecem ativos. Este passo limpa o catálogo marcando-os como inativos.
-            print("18. desativando produtos não-moda (Casa/Lifestyle)...")
-            NON_FASHION_NAME_PATTERNS = [
-                "bandeja", "taça", "taca", "castical", "castiçal",
-                "vaso", "vela ", " vela", "difusor", "porta-retrato",
-                "porta retrato", "jarro", "jarra", "bowl", "cesto",
-                "cesta ", "almofada", "manta ", "corel sandi", "coral sandi",
-                "sandi med", "sandi ned", "guardanapo", "toalha de mesa",
-            ]
-            from sqlalchemy import text as sql_text
-            for pattern in NON_FASHION_NAME_PATTERNS:
-                await session.execute(
-                    sql_text(
-                        "UPDATE catalog_products SET is_active = 0 "
-                        "WHERE LOWER(name) LIKE :pat"
-                    ),
-                    {"pat": f"%{pattern}%"},
-                )
-            await session.commit()
-
-            deactivated_result = await session.execute(
-                sql_text("SELECT COUNT(*) FROM catalog_products WHERE is_active = 0")
-            )
-            deactivated = deactivated_result.scalar_one()
-            print(f"18.1 produtos não-moda desativados: {deactivated}")
-
-            print(f"18.2 marcando sucesso | total_upserts={total_upserts}")
+            print(f"18. marcando sucesso | total_upserts={total_upserts}")
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,
