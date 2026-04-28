@@ -26,9 +26,22 @@ def normalize_email(email: Any) -> str:
 def normalize_answers(raw: dict[str, Any] | None) -> dict[str, str]:
     raw = raw or {}
     return {
-        "occasion": str(raw.get("occasion") or raw.get("ocasiao") or raw.get("ocasião") or "").strip().lower(),
-        "goal": str(raw.get("goal") or raw.get("objetivo") or "").strip().lower(),
-        "style": str(raw.get("style") or raw.get("estilo") or "").strip().lower(),
+        "occasion": str(
+            raw.get("occasion")
+            or raw.get("ocasiao")
+            or raw.get("ocasião")
+            or ""
+        ).strip().lower(),
+        "goal": str(
+            raw.get("goal")
+            or raw.get("objetivo")
+            or ""
+        ).strip().lower(),
+        "style": str(
+            raw.get("style")
+            or raw.get("estilo")
+            or ""
+        ).strip().lower(),
     }
 
 
@@ -47,8 +60,6 @@ async def lookup_customer_closet(payload: LookupRequest):
 
     return {
         **data,
-
-        # compatível com MeuClosetPage.tsx
         "cliente": {
             "nome": customer.get("name") or email.split("@")[0],
             "email": customer.get("email") or email,
@@ -127,7 +138,9 @@ async def recommend(payload: RecommendationRequest):
             "message": "Recomendações lidas do banco consolidado.",
         },
     }
-    @router.get("/debug")
+
+
+@router.get("/debug")
 async def debug_customer_closet(email: str):
     email = normalize_email(email)
     if not email:
