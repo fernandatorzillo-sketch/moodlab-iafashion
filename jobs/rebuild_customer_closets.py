@@ -64,12 +64,48 @@ async def run() -> None:
 
                     COALESCE(MAX(cp.product_id), MAX(oi.product_id)) AS product_id,
                     COALESCE(MAX(cp.ref_id), MAX(oi.ref_id)) AS ref_id,
+
+                    -- Nome: prefere catálogo (mais limpo) mas aceita order_item
                     COALESCE(MAX(cp.name), MAX(oi.name)) AS name,
-                    COALESCE(MAX(cp.category), MAX(oi.category)) AS category,
-                    COALESCE(MAX(cp.department), MAX(oi.department)) AS department,
+
+                    -- Categoria e departamento VÊM DO CATÁLOGO (order_items não tem)
+                    MAX(cp.category)   AS category,
+                    MAX(cp.department) AS department,
+
                     COALESCE(MAX(cp.brand), MAX(oi.brand)) AS brand,
-                    COALESCE(MAX(cp.image_url), MAX(oi.image_url)) AS image_url,
-                    COALESCE(MAX(cp.product_url), MAX(oi.product_url)) AS product_url,
+
+                    -- Imagem: corrige domínio lojaaguadecoco → aguadecoco na origem
+                    REPLACE(
+                        REPLACE(
+                            COALESCE(MAX(cp.image_url), MAX(oi.image_url)),
+                            'lojaaguadecoco.vteximg.com.br',
+                            'aguadecoco.vteximg.com.br'
+                        ),
+                        'lojaaguadecoco.vtexassets.com',
+                        'aguadecoco.vteximg.com.br'
+                    ) AS image_url,
+
+                    -- URL do produto: prefere catálogo (tem slug correto)
+                    -- Garante URL absoluta: se começa com '/' adiciona domínio
+                    CASE
+                        WHEN MAX(cp.product_url) IS NOT NULL
+                             AND MAX(cp.product_url) <> ''
+                        THEN
+                            CASE
+                                WHEN MAX(cp.product_url) LIKE 'http%'
+                                THEN MAX(cp.product_url)
+                                ELSE 'https://www.aguadecoco.com.br' || MAX(cp.product_url)
+                            END
+                        WHEN MAX(oi.product_url) IS NOT NULL
+                             AND MAX(oi.product_url) <> ''
+                        THEN
+                            CASE
+                                WHEN MAX(oi.product_url) LIKE 'http%'
+                                THEN MAX(oi.product_url)
+                                ELSE 'https://www.aguadecoco.com.br' || MAX(oi.product_url)
+                            END
+                        ELSE NULL
+                    END AS product_url,
 
                     COUNT(DISTINCT oi.order_id) AS purchase_count,
                     COALESCE(SUM(oi.quantity), 0) AS total_quantity,
@@ -84,7 +120,11 @@ async def run() -> None:
                 FROM order_items oi
                 INNER JOIN orders o
                     ON o.order_id = oi.order_id
-                LEFT JOIN catalog_products cp
+
+                -- INNER JOIN com catalog_products garante que só entram itens
+                -- que existem no catálogo de moda (exclui Casa/Lifestyle
+                -- automaticamente, pois esses produtos não são sincronizados)
+                INNER JOIN catalog_products cp
                     ON cp.sku_id = oi.sku_id
 
                 WHERE
@@ -93,6 +133,11 @@ async def run() -> None:
                     AND TRIM(oi.email) <> ''
                     AND oi.email NOT LIKE '%vtex.com.br'
                     AND COALESCE(LOWER(o.status), '') NOT IN ('canceled', 'cancelado', 'cancelled')
+                    -- Exclui departamentos não-moda explicitamente (segurança extra)
+                    AND COALESCE(LOWER(cp.department), '') NOT IN (
+                        'casa', 'lifestyle', 'decor', 'decoracao', 'decoração',
+                        'utilidades', 'cozinha', 'banheiro', 'quarto', 'sala'
+                    )
 
                 GROUP BY
                     oi.email,
