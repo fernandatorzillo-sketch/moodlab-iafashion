@@ -127,3 +127,10 @@ async def recommend(payload: RecommendationRequest):
             "message": "Recomendações lidas do banco consolidado.",
         },
     }
+    @router.get("/debug")
+async def debug_customer_closet(email: str):
+    email = normalize_email(email)
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail é obrigatório")
+
+    return await get_customer_closet_payload(email)
