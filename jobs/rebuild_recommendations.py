@@ -99,6 +99,23 @@ async def fetch_answers_batch(session, emails):
 
 
 async def fetch_catalog(session):
+    from sqlalchemy import func, not_
+
+    NON_FASHION_PATTERNS = [
+        "%bandeja%", "%castical%", "%castiçal%", "%difusor%",
+        "%porta-retrato%", "%porta retrato%", "%guardanapo%",
+        "%toalha de mesa%", "%corel sandi%", "%coral sandi%",
+        "%sandi med%", "%sandi ned%", "%vaso %", "% vaso%",
+        "% vela%", "%vela %", "%jarra%", "%cesto %",
+    ]
+    non_fashion_filter = ~func.lower(
+        func.coalesce(CatalogProduct.name, "")
+    ).like("%bandeja%")
+    for pat in NON_FASHION_PATTERNS[1:]:
+        non_fashion_filter = non_fashion_filter & ~func.lower(
+            func.coalesce(CatalogProduct.name, "")
+        ).like(pat)
+
     result = await session.execute(
         select(CatalogProduct, InventoryBySku)
         .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
@@ -106,6 +123,7 @@ async def fetch_catalog(session):
             CatalogProduct.is_active == 1,
             InventoryBySku.is_available == 1,
             InventoryBySku.quantity > 0,
+            non_fashion_filter,
         )
     )
 

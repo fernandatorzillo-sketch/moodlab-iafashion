@@ -127,7 +127,35 @@ async def run() -> None:
                     start += page_size
                     print(f"17. próxima faixa | start={start}")
 
-            print(f"18. marcando sucesso | total_upserts={total_upserts}")
+            # Desativa produtos que NÃO pertencem às categorias de moda sincronizadas.
+            # O upsert acima só atualiza/insere — produtos antigos de Casa/Lifestyle
+            # permanecem ativos. Este passo limpa o catálogo marcando-os como inativos.
+            print("18. desativando produtos não-moda (Casa/Lifestyle)...")
+            NON_FASHION_NAME_PATTERNS = [
+                "bandeja", "taça", "taca", "castical", "castiçal",
+                "vaso", "vela ", " vela", "difusor", "porta-retrato",
+                "porta retrato", "jarro", "jarra", "bowl", "cesto",
+                "cesta ", "almofada", "manta ", "corel sandi", "coral sandi",
+                "sandi med", "sandi ned", "guardanapo", "toalha de mesa",
+            ]
+            from sqlalchemy import text as sql_text
+            for pattern in NON_FASHION_NAME_PATTERNS:
+                await session.execute(
+                    sql_text(
+                        "UPDATE catalog_products SET is_active = 0 "
+                        "WHERE LOWER(name) LIKE :pat"
+                    ),
+                    {"pat": f"%{pattern}%"},
+                )
+            await session.commit()
+
+            deactivated_result = await session.execute(
+                sql_text("SELECT COUNT(*) FROM catalog_products WHERE is_active = 0")
+            )
+            deactivated = deactivated_result.scalar_one()
+            print(f"18.1 produtos não-moda desativados: {deactivated}")
+
+            print(f"18.2 marcando sucesso | total_upserts={total_upserts}")
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,

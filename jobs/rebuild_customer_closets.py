@@ -121,10 +121,10 @@ async def run() -> None:
                 INNER JOIN orders o
                     ON o.order_id = oi.order_id
 
-                -- INNER JOIN com catalog_products garante que só entram itens
-                -- que existem no catálogo de moda (exclui Casa/Lifestyle
-                -- automaticamente, pois esses produtos não são sincronizados)
-                INNER JOIN catalog_products cp
+                -- LEFT JOIN: mantém TODOS os itens comprados pelo cliente,
+                -- mesmo os mais antigos que não estão mais no catálogo ativo.
+                -- A filtragem de Casa/Lifestyle é feita por nome e departamento abaixo.
+                LEFT JOIN catalog_products cp
                     ON cp.sku_id = oi.sku_id
 
                 WHERE
@@ -133,7 +133,18 @@ async def run() -> None:
                     AND TRIM(oi.email) <> ''
                     AND oi.email NOT LIKE '%vtex.com.br'
                     AND COALESCE(LOWER(o.status), '') NOT IN ('canceled', 'cancelado', 'cancelled')
-                    -- Exclui departamentos não-moda explicitamente (segurança extra)
+                    -- Exclui produtos de Casa/Lifestyle pelo nome (order_items tem nome da VTEX)
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%bandeja%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%castical%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%castiçal%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%difusor%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%porta-retrato%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%porta retrato%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%guardanapo%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%toalha de mesa%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%corel sandi%'
+                    AND COALESCE(LOWER(oi.name), '') NOT LIKE '%coral sandi%'
+                    -- Exclui departamentos não-moda quando disponíveis no catálogo
                     AND COALESCE(LOWER(cp.department), '') NOT IN (
                         'casa', 'lifestyle', 'decor', 'decoracao', 'decoração',
                         'utilidades', 'cozinha', 'banheiro', 'quarto', 'sala'
