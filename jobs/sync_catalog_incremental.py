@@ -1,131 +1,129 @@
 import asyncio
 
-print("1. arquivo sync_catalog_incremental carregado")
-
 from models.catalog_product import CatalogProduct
 from services.closet_db import AsyncSessionLocal, init_closet_db
 from services.sync_control_service import mark_sync_error, mark_sync_success
 from services.vtex_catalog_service import (
+    enrich_product_fields,
     fetch_product_and_sku_ids,
     fetch_product_by_id,
     fetch_sku_by_id,
 )
 
-print("2. imports concluídos")
-
 JOB_NAME = "catalog_incremental"
 
-
-def extract_first_spec(product_data: dict, keys: list[str]) -> str | None:
-    specs = product_data.get("SpecificationGroups") or []
-    wanted = {k.lower() for k in keys}
-
-    for group in specs:
-        for field in group.get("Specifications", []) or []:
-            name = str(field.get("Name") or "").strip().lower()
-            if name in wanted:
-                values = field.get("Values") or []
-                if values:
-                    return str(values[0]).strip()
-    return None
+PAGE_SIZE = 100
+MAX_EMPTY_PAGES = 3
 
 
 async def run() -> None:
-    print("3. run iniciou")
+    print("1. Iniciando sync_catalog_incremental...", flush=True)
     await init_closet_db()
-    print("4. banco inicializado")
+    print("2. Banco inicializado.", flush=True)
 
     async with AsyncSessionLocal() as session:
-        print("5. sessão aberta")
         try:
             start = 0
-            page_size = 100
             total_upserts = 0
-
-            print(f"6. início do loop | start={start} | page_size={page_size}")
+            total_errors = 0
+            empty_pages = 0
 
             while True:
-                print(f"7. buscando faixa catálogo: {start} até {start + page_size - 1}")
-                payload = fetch_product_and_sku_ids(start, start + page_size - 1)
-                print("8. payload recebido de fetch_product_and_sku_ids")
+                end = start + PAGE_SIZE - 1
+                print(f"3. Buscando catálogo VTEX: {start} até {end}", flush=True)
 
+                payload = fetch_product_and_sku_ids(start, end)
                 data = payload.get("data") or {}
-                print(f"9. quantidade de products na faixa: {len(data)}")
 
                 if not data:
-                    print("10. sem dados, encerrando loop")
-                    break
+                    empty_pages += 1
+                    print(f"4. Página vazia. empty_pages={empty_pages}", flush=True)
+
+                    if empty_pages >= MAX_EMPTY_PAGES:
+                        break
+
+                    start += PAGE_SIZE
+                    continue
+
+                empty_pages = 0
 
                 for product_id, sku_ids in data.items():
                     try:
-                        print(f"11. processando product_id={product_id}")
+                        product_id = str(product_id)
+                        sku_list = [str(sku) for sku in (sku_ids or []) if sku]
 
-                        product = fetch_product_by_id(str(product_id))
-                        print(f"12. product carregado | product_id={product_id}")
+                        if not sku_list:
+                            print(f"Produto sem SKU: {product_id}", flush=True)
+                            continue
 
-                        first_sku = None
-                        sku_list = sku_ids or []
-                        if sku_list:
-                            print(f"13. sku principal encontrado | sku_id={sku_list[0]}")
-                            first_sku = fetch_sku_by_id(str(sku_list[0]))
-                            print(f"14. sku carregado | sku_id={sku_list[0]}")
-                        else:
-                            print(f"13. sem sku_list para product_id={product_id}")
+                        product = fetch_product_by_id(product_id)
 
-                        row = await session.get(CatalogProduct, str(product_id))
+                        first_sku_id = sku_list[0]
+                        first_sku = fetch_sku_by_id(first_sku_id)
+
+                        fields = enrich_product_fields(product, first_sku)
+
+                        row = await session.get(CatalogProduct, product_id)
                         if not row:
-                            row = CatalogProduct(product_id=str(product_id))
+                            row = CatalogProduct(product_id=product_id)
                             session.add(row)
-                            print(f"15. novo CatalogProduct criado | product_id={product_id}")
-                        else:
-                            print(f"15. CatalogProduct existente | product_id={product_id}")
 
-                        row.ref_id = str(product.get("RefId") or "") or None
-                        row.sku_id = str(first_sku.get("Id") or "") if first_sku else None
-                        row.name = product.get("Name")
-                        row.brand = product.get("BrandName")
-                        row.department = product.get("DepartmentName")
-                        row.category = product.get("CategoryName")
-                        row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
-                        row.occasion = extract_first_spec(product, ["ocasião", "ocasiao"])
-                        row.color = extract_first_spec(product, ["cor", "cores"])
-                        row.print_name = extract_first_spec(product, ["estamparia"])
-                        row.size = extract_first_spec(product, ["tamanho"])
-                        row.gender = extract_first_spec(product, ["gênero", "genero"])
-                        row.collection = extract_first_spec(product, ["coleção", "colecao"])
-                        row.image_url = (first_sku or {}).get("ImageUrl")
-                        row.product_url = product.get("DetailUrl")
+                        row.sku_id = first_sku_id
+                        row.ref_id = str(product.get("RefId") or product_id) or None
+                        row.name = fields["name"]
+                        row.brand = fields["brand"]
+                        row.department = fields["department"]
+                        row.category = fields["category"]
+                        row.product_type = fields["product_type"]
+                        row.occasion = fields["occasion"]
+                        row.color = fields["color"]
+                        row.print_name = fields["print_name"]
+                        row.size = fields["size"]
+                        row.gender = fields["gender"]
+                        row.collection = fields["collection"]
+                        row.image_url = fields["image_url"]
+                        row.product_url = fields["product_url"]
                         row.is_active = 1
                         row.raw_json = {
                             "product": product,
-                            "sku": first_sku,
+                            "first_sku": first_sku,
+                            "all_sku_ids": sku_list,
                         }
 
                         total_upserts += 1
 
                         if total_upserts % 100 == 0:
-                            print(f"16. checkpoint commit | total_upserts={total_upserts}")
                             await session.commit()
+                            print(
+                                f"5. Checkpoint | catalog_upserts={total_upserts} | errors={total_errors}",
+                                flush=True,
+                            )
 
                     except Exception as item_error:
-                        print(f"ERRO ao processar product_id={product_id}: {item_error}")
+                        total_errors += 1
+                        print(
+                            f"ERRO ao processar product_id={product_id}: {item_error}",
+                            flush=True,
+                        )
 
-                start += page_size
-                print(f"17. próxima faixa | start={start}")
+                await session.commit()
+                start += PAGE_SIZE
 
-            print(f"18. marcando sucesso | total_upserts={total_upserts}")
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,
                 reference_value=str(total_upserts),
-                notes=f"catalog_upserts={total_upserts}",
+                notes=f"catalog_upserts={total_upserts}; errors={total_errors}",
             )
             await session.commit()
 
-            print(f"19. sync_catalog_incremental concluído: {total_upserts}")
+            print(
+                f"6. sync_catalog_incremental concluído | upserts={total_upserts} | errors={total_errors}",
+                flush=True,
+            )
 
         except Exception as e:
-            print(f"ERRO GERAL no sync_catalog_incremental: {e}")
+            print(f"ERRO GERAL no sync_catalog_incremental: {e}", flush=True)
             await session.rollback()
             await mark_sync_error(session, JOB_NAME, notes=str(e))
             await session.commit()
@@ -133,5 +131,4 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
-    print("20. chamando asyncio.run(run())")
     asyncio.run(run())
