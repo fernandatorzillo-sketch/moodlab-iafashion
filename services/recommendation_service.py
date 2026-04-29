@@ -104,6 +104,27 @@ def is_fashion_product(product: CatalogProduct) -> bool:
     return any(term in text for term in fashion_terms)
 
 
+def _is_blocked_payload(name, category, department) -> bool:
+    text = normalize(" ".join([str(name or ""), str(category or ""), str(department or "")]))
+
+    blocked_terms = [
+        "bandeja",
+        "copo",
+        "taça",
+        "taca",
+        "vaso",
+        "porta",
+        "guardanapo",
+        "mesa",
+        "prato",
+        "casa",
+        "decor",
+        "home",
+    ]
+
+    return any(term in text for term in blocked_terms)
+
+
 def score_product(product: CatalogProduct, occasion: str = "", goal: str = "", style: str = "") -> float:
     text = normalize(
         " ".join(
@@ -123,28 +144,55 @@ def score_product(product: CatalogProduct, occasion: str = "", goal: str = "", s
     if occasion:
         if occasion in text:
             score += 5
-        if occasion == "praia" and any(x in text for x in ["biquini", "biquíni", "maiô", "maio", "saida", "saída"]):
+
+        if occasion == "praia" and any(
+            x in text for x in ["biquini", "biquíni", "maiô", "maio", "saida", "saída", "pareo", "pareô"]
+        ):
             score += 5
-        if occasion == "resort" and any(x in text for x in ["vestido", "camisa", "pantalona", "saia"]):
+
+        if occasion == "resort" and any(
+            x in text for x in ["vestido", "camisa", "pantalona", "saia", "linho"]
+        ):
             score += 4
-        if occasion == "jantar" and any(x in text for x in ["vestido", "camisa", "calça", "calca"]):
+
+        if occasion == "jantar" and any(
+            x in text for x in ["vestido", "camisa", "calça", "calca", "alfaiataria"]
+        ):
             score += 4
 
     if goal == "cross_sell":
-        if any(x in text for x in ["saida", "saída", "camisa", "short", "saia", "calça", "calca", "top"]):
+        if any(
+            x in text
+            for x in [
+                "saida",
+                "saída",
+                "pareo",
+                "pareô",
+                "camisa",
+                "short",
+                "saia",
+                "calça",
+                "calca",
+                "top",
+                "blusa",
+            ]
+        ):
             score += 4
 
     if goal == "up_sell":
-        if any(x in text for x in ["vestido", "resort", "bordado", "alfaiataria", "camisa"]):
+        if any(x in text for x in ["vestido", "resort", "bordado", "alfaiataria", "camisa", "linho"]):
             score += 5
 
     if style:
         if style in text:
             score += 3
+
         if style == "elegante" and any(x in text for x in ["vestido", "camisa", "alfaiataria"]):
             score += 3
-        if style == "leve" and any(x in text for x in ["linho", "praia", "resort", "saida", "saída"]):
+
+        if style == "leve" and any(x in text for x in ["linho", "praia", "resort", "saida", "saída", "pareo", "pareô"]):
             score += 3
+
         if style == "casual" and any(x in text for x in ["short", "camiseta", "blusa", "top"]):
             score += 3
 
@@ -186,7 +234,7 @@ async def get_customer_recommendations(
             select(CustomerRecommendation)
             .where(CustomerRecommendation.email.ilike(email_like))
             .order_by(CustomerRecommendation.score.desc().nullslast())
-            .limit(limit)
+            .limit(limit * 3)
         )
 
         saved_items = saved_result.scalars().all()
@@ -261,27 +309,6 @@ async def get_customer_recommendations(
     ]
 
 
-def _is_blocked_payload(name, category, department) -> bool:
-    text = normalize(" ".join([str(name or ""), str(category or ""), str(department or "")]))
-
-    blocked_terms = [
-        "bandeja",
-        "copo",
-        "taça",
-        "taca",
-        "vaso",
-        "porta",
-        "guardanapo",
-        "mesa",
-        "prato",
-        "casa",
-        "decor",
-        "home",
-    ]
-
-    return any(term in text for term in blocked_terms)
-
-
 def _format_saved(item: CustomerRecommendation) -> dict:
     url = clean_url(item.product_url)
 
@@ -316,6 +343,8 @@ def _format_product(
 ) -> dict:
     url = clean_url(product.product_url)
 
+    reason = build_reason(product, occasion=occasion, goal=goal, style=style)
+
     return {
         "sku_id": product.sku_id,
         "product_id": product.product_id,
@@ -342,8 +371,8 @@ def _format_product(
         "product_url": url,
         "link_produto": url,
         "url": url,
-        "reason": build_reason(product, occasion=occasion, goal=goal, style=style),
-        "motivo": build_reason(product, occasion=occasion, goal=goal, style=style),
+        "reason": reason,
+        "motivo": reason,
         "recommendation_type": goal or "fashion_stock",
         "score": float(score or 0),
     }
