@@ -88,14 +88,6 @@ def fetch_sku_by_id(sku_id: str) -> dict[str, Any]:
     response.raise_for_status()
     data = response.json() or {}
 
-    # Normaliza ImageUrl: lojaaguadecoco → aguadecoco (domínio canônico)
-    image_url = data.get("ImageUrl") or ""
-    if image_url:
-        image_url = (
-            image_url
-            .replace("lojaaguadecoco.vteximg.com.br", "aguadecoco.vteximg.com.br")
-            .replace("lojaaguadecoco.vtexassets.com",  "aguadecoco.vteximg.com.br")
-        )
-        data["ImageUrl"] = image_url
-
+    # lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco na VTEX.
+    # Não alterar a URL retornada pela API.
     return data

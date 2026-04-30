@@ -74,16 +74,8 @@ async def run() -> None:
 
                     COALESCE(MAX(cp.brand), MAX(oi.brand)) AS brand,
 
-                    -- Imagem: corrige domínio lojaaguadecoco → aguadecoco na origem
-                    REPLACE(
-                        REPLACE(
-                            COALESCE(MAX(cp.image_url), MAX(oi.image_url)),
-                            'lojaaguadecoco.vteximg.com.br',
-                            'aguadecoco.vteximg.com.br'
-                        ),
-                        'lojaaguadecoco.vtexassets.com',
-                        'aguadecoco.vteximg.com.br'
-                    ) AS image_url,
+                    -- lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco.
+                    COALESCE(MAX(cp.image_url), MAX(oi.image_url)) AS image_url,
 
                     -- URL do produto: prefere catálogo (tem slug correto)
                     -- Garante URL absoluta: se começa com '/' adiciona domínio

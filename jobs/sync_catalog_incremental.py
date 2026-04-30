@@ -94,7 +94,19 @@ async def run() -> None:
                         row.gender = extract_first_spec(product, ["gênero", "genero"])
                         row.collection = extract_first_spec(product, ["coleção", "colecao"])
                         row.image_url = (first_sku or {}).get("ImageUrl")
-                        row.product_url = product.get("DetailUrl")
+
+                        # DetailUrl inclui sufixo de variação do SKU (ex: /produto-bege-g/p)
+                        # causando 404. LinkId é o slug limpo do produto (ex: /produto/p).
+                        link_id = str(product.get("LinkId") or "").strip()
+                        detail_url = str(product.get("DetailUrl") or "").strip()
+                        if link_id:
+                            row.product_url = f"https://www.aguadecoco.com.br/{link_id}/p"
+                        elif detail_url.startswith("/"):
+                            row.product_url = "https://www.aguadecoco.com.br" + detail_url
+                        elif detail_url.startswith("http"):
+                            row.product_url = detail_url
+                        else:
+                            row.product_url = None
                         row.is_active = 1
                         row.raw_json = {
                             "product": product,
