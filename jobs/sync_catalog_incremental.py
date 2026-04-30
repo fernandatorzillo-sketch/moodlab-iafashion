@@ -9,7 +9,6 @@ from services.vtex_catalog_service import (
     fetch_product_and_sku_ids,
     fetch_product_by_id,
     fetch_sku_by_id,
-    get_fashion_category_ids,
     fetch_category_map,
 )
 
@@ -48,14 +47,9 @@ async def run() -> None:
             category_map = fetch_category_map()
             print(f"5.0 category_map: {len(category_map)} categorias mapeadas")
 
-            # Descobre departamentos de moda (exclui Casa, Lifestyle etc.)
-            print("5.1 descobrindo categorias de moda...")
-            fashion_category_ids = get_fashion_category_ids()
-            if fashion_category_ids:
-                print(f"5.2 categorias de moda: {fashion_category_ids}")
-            else:
-                print("5.2 sem filtro — sincronizando todas as categorias")
-                fashion_category_ids = [None]
+            # Sincroniza todo o catálogo (filtragem de não-moda feita por nome ao final)
+            fashion_category_ids = [None]
+            print("5.1 sincronizando todas as categorias")
 
             print(f"6. início do loop | page_size={page_size}")
 
