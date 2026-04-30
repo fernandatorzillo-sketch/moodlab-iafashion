@@ -1,290 +1,173 @@
-from sqlalchemy import text
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.customer import Customer
+from models.customer_closet_item import CustomerClosetItem
 from services.closet_db import AsyncSessionLocal
-from services.look_engine import build_looks
 from services.recommendation_service import get_customer_recommendations
-
-SITE_BASE = "https://www.aguadecoco.com.br"
-
 
 def normalize_email(email: str) -> str:
     return str(email or "").strip().lower()
 
 
-def build_email_like(email: str) -> str:
-    return f"{normalize_email(email)}%"
-
-
-def safe_url(url: str | None) -> str | None:
+def fix_image_url(url: str) -> str:
+    """
+    Normaliza a URL da imagem VTEX.
+    lojaaguadecoco.vteximg.com.br e aguadecoco.vteximg.com.br sao ambos validos.
+    Apenas normaliza o tamanho para 500x500.
+    """
     if not url:
-        return None
-
+        return ""
     url = str(url).strip()
+    # Normaliza sufixo de dimensao: /arquivos/ids/123456[-WxH]/nome.jpg -> -500-500
+    import re
+    url = re.sub(
+        r"(/arquivos/ids/[0-9]+)(?:-[0-9]+-[0-9]+)?(/[^?#]*)",
+        lambda m: m.group(1) + "-500-500" + m.group(2),
+        url,
+    )
+    return url
 
-    if url.startswith("http"):
-        return url
 
+def fix_product_url(url: str) -> str:
+    """
+    Garante que a URL do produto aponta para o site de produção.
+    """
+    if not url:
+        return ""
+    url = str(url).strip()
+    # Se a URL não tem domínio, adiciona o domínio correto
     if url.startswith("/"):
-        return f"{SITE_BASE}{url}"
-
-    return f"{SITE_BASE}/{url}"
-
-
-def slugify(value: str | None) -> str:
-    value = str(value or "").strip().lower()
-
-    replacements = {
-        "á": "a", "à": "a", "ã": "a", "â": "a",
-        "é": "e", "ê": "e",
-        "í": "i",
-        "ó": "o", "õ": "o", "ô": "o",
-        "ú": "u",
-        "ç": "c",
-    }
-
-    for old, new in replacements.items():
-        value = value.replace(old, new)
-
-    chars = []
-    for char in value:
-        if char.isalnum():
-            chars.append(char)
-        elif char in [" ", "-", "_", "/"]:
-            chars.append("-")
-
-    slug = "".join(chars)
-
-    while "--" in slug:
-        slug = slug.replace("--", "-")
-
-    return slug.strip("-")
-
-
-def build_product_url(name: str | None, product_id: str | None, url: str | None) -> str:
-    fixed = safe_url(url)
-    if fixed:
-        return fixed
-
-    if name:
-        slug = slugify(name)
-        if slug:
-            return f"{SITE_BASE}/{slug}/p"
-
-    if product_id:
-        return f"{SITE_BASE}/busca?fq=productId:{product_id}"
-
-    return SITE_BASE
-
-
-def infer_product_type(name: str | None) -> str | None:
-    text = str(name or "").strip().lower()
-
-    if any(x in text for x in ["biquini", "biquíni", "sutiã", "sutia", "calcinha"]):
-        return "biquini"
-
-    if any(x in text for x in ["maiô", "maio"]):
-        return "maio"
-
-    if "vestido" in text:
-        return "vestido"
-
-    if any(x in text for x in ["saída", "saida", "pareô", "pareo"]):
-        return "saida"
-
-    if any(x in text for x in ["short", "calça", "calca", "pantalona", "saia"]):
-        return "bottom"
-
-    if any(x in text for x in ["camisa", "camiseta", "blusa", "top", "cropped"]):
-        return "top"
-
-    if any(x in text for x in ["bolsa", "sandália", "sandalia", "chapéu", "chapeu"]):
-        return "acessorio"
-
-    return None
-
-
-def infer_department(name: str | None, category: str | None) -> str | None:
-    text = f"{name or ''} {category or ''}".lower()
-
-    home_terms = [
-        "bandeja",
-        "copo",
-        "taça",
-        "taca",
-        "vaso",
-        "prato",
-        "guardanapo",
-        "mesa",
-        "home",
-        "casa",
-    ]
-
-    if any(term in text for term in home_terms):
-        return "casa"
-
-    return "feminino"
+        return f"https://aguadecoco.com.br{url}"
+    return url
 
 
 async def get_customer_closet_payload(email: str) -> dict:
     email = normalize_email(email)
-    email_like = build_email_like(email)
+
+    if not email:
+        return {
+            "found": False,
+            "customer": None,
+            "closet": [],
+            "looks": [],
+            "recommendations": [],
+            "debug": {
+                "email": "",
+                "closet_count": 0,
+                "message": "E-mail vazio.",
+            },
+        }
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            text(
-                """
-                SELECT
-                    oi.sku_id,
-                    MAX(oi.product_id) AS product_id,
-                    MAX(oi.ref_id) AS ref_id,
-                    MAX(oi.name) AS name,
+        customer = await _get_customer(session, email)
+        closet_items = await _get_customer_closet_items(session, email)
 
-                    MAX(COALESCE(oi.category, cp_by_product.category, cp_by_sku.category)) AS category,
-                    MAX(COALESCE(oi.department, cp_by_product.department, cp_by_sku.department)) AS department,
-                    MAX(COALESCE(oi.brand, cp_by_product.brand, cp_by_sku.brand)) AS brand,
+    recommendations = await get_customer_recommendations(email)
 
-                    MAX(COALESCE(oi.image_url, cp_by_product.image_url, cp_by_sku.image_url)) AS image_url,
-                    MAX(COALESCE(oi.product_url, cp_by_product.product_url, cp_by_sku.product_url)) AS product_url,
+    customer_name = None
+    if customer:
+        customer_name = customer.full_name or customer.first_name or email.split("@")[0]
+    else:
+        customer_name = email.split("@")[0]
 
-                    MAX(COALESCE(cp_by_product.product_type, cp_by_sku.product_type)) AS product_type,
-                    MAX(COALESCE(cp_by_product.occasion, cp_by_sku.occasion)) AS occasion,
-                    MAX(COALESCE(cp_by_product.print_name, cp_by_sku.print_name)) AS estamparia,
-                    MAX(COALESCE(cp_by_product.color, cp_by_sku.color)) AS color,
-                    MAX(COALESCE(cp_by_product.size, cp_by_sku.size)) AS size,
-                    MAX(COALESCE(cp_by_product.collection, cp_by_sku.collection)) AS collection,
+    closet_payload = [
+        {
+            # IDs
+            "id": item.product_id or item.sku_id,
+            "sku_id": item.sku_id,
+            "product_id": item.product_id,
+            "ref_id": item.ref_id,
 
-                    COUNT(DISTINCT oi.order_id) AS purchase_count,
-                    COALESCE(SUM(oi.quantity), 0) AS quantity,
-                    COALESCE(SUM(oi.total_value), 0) AS total_spent,
-                    MAX(o.creation_date) AS last_purchase_at
+            # Nome — compatível com frontend VTEX e MeuClosetPage
+            "nome": item.name,
+            "name": item.name,
 
-                FROM order_items oi
+            # Categoria — ambos os formatos
+            "categoria": item.category,
+            "category": item.category,
 
-                LEFT JOIN orders o
-                    ON o.order_id = oi.order_id
+            # Departamento
+            "departamento": item.department,
+            "department": item.department,
 
-                LEFT JOIN catalog_products cp_by_product
-                    ON cp_by_product.product_id = oi.product_id
+            # Imagem — ambos os formatos que o frontend usa
+            "imagem_url": fix_image_url(item.image_url),
+            "image_url": fix_image_url(item.image_url),
 
-                LEFT JOIN catalog_products cp_by_sku
-                    ON cp_by_sku.sku_id = oi.sku_id
+            # Link — ambos os formatos
+            "link_produto": fix_product_url(item.product_url),
+            "product_url": fix_product_url(item.product_url),
+            "url": fix_product_url(item.product_url),
 
-                WHERE
-                    LOWER(oi.email) LIKE LOWER(:email_like)
-                    AND COALESCE(LOWER(o.status), '') NOT IN ('canceled', 'cancelado')
+            # Outros campos
+            "brand": item.brand,
+            "cor": None,
+            "color": None,
+            "preco": None,
+            "price": None,
+            "purchase_count": item.purchase_count,
+            "quantity": item.total_quantity,
+            "total_spent": float(item.total_spent or 0),
+            "last_purchase_at": item.last_purchase_at.isoformat() if item.last_purchase_at else None,
+        }
+        for item in closet_items
+    ]
 
-                GROUP BY
-                    oi.sku_id
-
-                ORDER BY
-                    MAX(o.creation_date) DESC NULLS LAST
-                """
-            ),
-            {"email_like": email_like},
-        )
-
-        rows = result.mappings().all()
-
-    closet_payload = []
-
-    for row in rows:
-        name = row.get("name")
-        product_id = row.get("product_id")
-
-        category = row.get("category") or infer_product_type(name)
-        product_type = row.get("product_type") or infer_product_type(name)
-        department = row.get("department") or infer_department(name, category)
-
-        image_url = row.get("image_url") or ""
-
-        product_url = build_product_url(
-            name=name,
-            product_id=product_id,
-            url=row.get("product_url"),
-        )
-
-        closet_payload.append(
-            {
-                "id": product_id or row.get("sku_id"),
-                "sku": row.get("sku_id"),
-                "sku_id": row.get("sku_id"),
-                "product_id": product_id,
-                "produto_id": product_id,
-                "ref_id": row.get("ref_id"),
-
-                "nome": name,
-                "name": name,
-
-                "categoria": category,
-                "category": category,
-
-                "departamento": department,
-                "department": department,
-
-                "brand": row.get("brand"),
-
-                "tipo_produto": product_type,
-                "product_type": product_type,
-
-                "occasion": row.get("occasion"),
-                "ocasiao": row.get("occasion"),
-
-                "estamparia": row.get("estamparia"),
-
-                "cor": row.get("color"),
-                "color": row.get("color"),
-
-                "tamanho": row.get("size"),
-                "size": row.get("size"),
-
-                "colecao": row.get("collection"),
-                "collection": row.get("collection"),
-
-                "imagem_url": image_url,
-                "image_url": image_url,
-
-                "link_produto": product_url,
-                "product_url": product_url,
-                "url": product_url,
-
-                "purchase_count": int(row.get("purchase_count") or 0),
-                "quantity": int(row.get("quantity") or 0),
-                "total_spent": float(row.get("total_spent") or 0),
-                "last_purchase_at": (
-                    row.get("last_purchase_at").isoformat()
-                    if row.get("last_purchase_at")
-                    else None
-                ),
-            }
-        )
-
-    looks = build_looks(closet_payload)
-
-    recommendations = await get_customer_recommendations(
-        email=email_like,
-        limit=12,
-    )
+    # Formata recomendações compatível com frontend VTEX
+    recs_payload = [
+        {
+            "produto_id": r.get("product_id"),
+            "sku_id": r.get("sku_id"),
+            "ref_id": r.get("ref_id"),
+            "nome": r.get("name"),
+            "name": r.get("name"),
+            "motivo": r.get("reason") or "Selecionado para você",
+            "reason": r.get("reason") or "Selecionado para você",
+            "score": r.get("score", 0),
+            "imagem_url": fix_image_url(r.get("image_url", "")),
+            "image_url": fix_image_url(r.get("image_url", "")),
+            "link_produto": fix_product_url(r.get("url", "") or r.get("product_url", "")),
+            "product_url": fix_product_url(r.get("url", "") or r.get("product_url", "")),
+            "categoria": r.get("category"),
+            "category": r.get("category"),
+            "departamento": r.get("department"),
+            "department": r.get("department"),
+            "price": r.get("price"),
+            "preco": r.get("price"),
+        }
+        for r in recommendations
+    ]
 
     return {
-        "found": len(closet_payload) > 0,
+        "found": len(closet_payload) > 0 or customer is not None,
         "customer": {
-            "name": email.split("@")[0],
-            "email": email,
-        },
-        "cliente": {
-            "nome": email.split("@")[0],
+            "name": customer_name,
             "email": email,
         },
         "closet": closet_payload,
-        "closet_products": closet_payload,
-        "looks": looks,
-        "recommendations": recommendations,
+        "looks": [],
+        "recommendations": recs_payload,
         "debug": {
-            "email_original": email,
-            "email_like": email_like,
+            "email": email,
             "closet_count": len(closet_payload),
-            "looks_count": len(looks),
-            "recommendation_count": len(recommendations),
-            "source": "order_items + orders + catalog_products by product_id and sku_id",
+            "recommendation_count": len(recs_payload),
+            "message": "Closet e recomendações lidos do banco consolidado.",
         },
     }
+
+
+async def _get_customer(session: AsyncSession, email: str):
+    result = await session.execute(
+        select(Customer).where(Customer.email == email)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _get_customer_closet_items(session: AsyncSession, email: str):
+    result = await session.execute(
+        select(CustomerClosetItem)
+        .where(CustomerClosetItem.email == email)
+        .order_by(CustomerClosetItem.last_purchase_at.desc().nullslast())
+    )
+    return result.scalars().all()

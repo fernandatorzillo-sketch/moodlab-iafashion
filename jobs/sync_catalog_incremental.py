@@ -18,12 +18,18 @@ JOB_NAME = "catalog_incremental"
 
 def extract_first_spec(product_data: dict, keys: list[str]) -> str | None:
     specs = product_data.get("SpecificationGroups") or []
-    wanted = {k.lower() for k in keys}
+    wanted = [k.lower() for k in keys]
 
     for group in specs:
         for field in group.get("Specifications", []) or []:
             name = str(field.get("Name") or "").strip().lower()
-            if name in wanted:
+            # Aceita match exato OU quando o nome contém a palavra-chave
+            # Ex: "0- Gênero" contém "gênero" → match
+            matched = any(
+                name == w or name.endswith(w) or w in name
+                for w in wanted
+            )
+            if matched:
                 values = field.get("Values") or []
                 if values:
                     return str(values[0]).strip()
