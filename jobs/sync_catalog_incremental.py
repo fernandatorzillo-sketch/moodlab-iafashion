@@ -90,8 +90,22 @@ async def run() -> None:
                         row.sku_id = str(first_sku.get("Id") or "") if first_sku else None
                         row.name = product.get("Name")
                         row.brand = product.get("BrandName")
-                        row.department = product.get("DepartmentName")
-                        row.category = product.get("CategoryName")
+                        # DepartmentId/CategoryId do produto para lookup no category_map
+                        dept_id = int(product.get("DepartmentId") or 0)
+                        cat_id  = int(product.get("CategoryId") or 0)
+                        dept_entry = category_map.get(dept_id) or {}
+                        cat_entry  = category_map.get(cat_id) or {}
+
+                        # Fonte primária: spec "Departamento" (id=531) — mais confiável
+                        dept_from_spec = extract_first_spec(product, ["departamento", "department"])
+                        cat_from_spec  = extract_first_spec(product, ["tipo de produto", "tipo"])
+
+                        # Fallback: category_map (funciona quando a árvore retornar nomes)
+                        dept_from_map = dept_entry.get("name") or cat_entry.get("department_name") or None
+                        cat_from_map  = cat_entry.get("name") or None
+
+                        row.department = dept_from_spec or dept_from_map or product.get("DepartmentName")
+                        row.category   = cat_from_spec  or cat_from_map  or product.get("CategoryName")
                         row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
                         row.occasion = extract_first_spec(product, ["ocasião", "ocasiao"])
                         row.color = extract_first_spec(product, ["cor", "cores"])
@@ -131,7 +145,24 @@ async def run() -> None:
                 start += page_size
                 print(f"17. próxima faixa | start={start}")
 
-            print(f"18. marcando sucesso | total_upserts={total_upserts}")
+            # Desativa produtos não-moda (Casa, Lifestyle etc.) pelo nome
+            print("18. desativando produtos não-moda...")
+            from sqlalchemy import text as sql_text
+            non_fashion_patterns = [
+                "%bandeja%", "%castical%", "%castiçal%", "%difusor%",
+                "%porta-retrato%", "%porta retrato%", "%guardanapo%",
+                "%toalha de mesa%", "%corel sandi%", "%coral sandi%",
+                "%sandi med%", "%sandi ned%", "%caixa osso%", "%caixa geometrica%",
+            ]
+            for pat in non_fashion_patterns:
+                await session.execute(
+                    sql_text("UPDATE catalog_products SET is_active = 0 WHERE LOWER(name) LIKE :pat"),
+                    {"pat": pat},
+                )
+            await session.commit()
+            print("18.0 desativação concluída")
+
+            print(f"18.1 marcando sucesso | total_upserts={total_upserts}")
             await mark_sync_success(
                 session=session,
                 job_name=JOB_NAME,
