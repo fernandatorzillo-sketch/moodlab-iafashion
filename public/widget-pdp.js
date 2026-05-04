@@ -5,18 +5,24 @@
       "https://SEU-DOMINIO-API.com",
   };
 
-  function getLoggedEmail() {
+  async function getLoggedEmail() {
+    // Fonte primária: VTEX Session API (mais confiável que vtexjs.checkout)
     try {
-      return (
-        window.vtexjs &&
-        window.vtexjs.checkout &&
-        window.vtexjs.checkout.orderForm &&
-        window.vtexjs.checkout.orderForm.clientProfileData &&
-        window.vtexjs.checkout.orderForm.clientProfileData.email
-      ) || "";
-    } catch (e) {
-      return "";
-    }
+      const res = await fetch("/api/sessions?items=profile.email", {
+        credentials: "include", headers: { Accept: "application/json" }
+      });
+      if (res.ok) {
+        const d = await res.json();
+        const email = d?.namespaces?.profile?.email?.value;
+        if (email && email.includes("@")) return email.trim().toLowerCase();
+      }
+    } catch (e) {}
+    // Fallback: vtexjs
+    try {
+      const e = window.vtexjs?.checkout?.orderForm?.clientProfileData?.email;
+      if (e && e.includes("@")) return e.trim().toLowerCase();
+    } catch (e) {}
+    return "";
   }
 
   function injectStyles() {
@@ -149,6 +155,12 @@
         font-weight: 600;
         font-size: 13px;
       }
+      .ml-pdp-card-price {
+        font-size: 15px;
+        font-weight: 600;
+        color: #5a4a3a;
+        margin: 4px 0 8px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -221,11 +233,20 @@
     return response.json();
   }
 
+  function proxyImage(url) {
+    if (!url) return "";
+    const norm = url.replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
+    const isVtex = norm.includes("vteximg.com.br") || norm.includes("vtexassets.com");
+    return isVtex ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(norm)}` : norm;
+  }
+
   function renderRecommendations(data) {
     const body = document.getElementById("ml-pdp-drawer-body");
     if (!body) return;
 
-    const items = Array.isArray(data.recommendations) ? data.recommendations : [];
+    const items = (Array.isArray(data.recommendations) ? data.recommendations : [])
+      .filter(i => i.image_url || i.imagem_url); // apenas com imagem
+
     if (!items.length) {
       body.innerHTML = `<div>Sem recomendações no momento.</div>`;
       return;
@@ -233,24 +254,26 @@
 
     body.innerHTML = `
       <div class="ml-pdp-grid">
-        ${items
-          .map(
-            (item) => `
+        ${items.map(item => {
+          const imgUrl = proxyImage(item.image_url || item.imagem_url || "");
+          const price = item.price || item.preco || 0;
+          const priceHtml = price > 0
+            ? `<div class="ml-pdp-card-price">${Number(price).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div>`
+            : "";
+          return `
             <div class="ml-pdp-card">
-              ${
-                item.imagem_url
-                  ? `<img src="${item.imagem_url}" alt="${item.nome || "Produto"}" />`
-                  : `<div style="aspect-ratio:3/4;background:#f8f3ec;"></div>`
-              }
+              ${imgUrl
+                ? `<img src="${imgUrl}" alt="${item.nome || "Produto"}" onerror="this.style.display='none'" />`
+                : `<div style="aspect-ratio:3/4;background:#f8f3ec;"></div>`}
               <div class="ml-pdp-card-body">
-                <div class="ml-pdp-card-category">${item.categoria || ""}</div>
-                <div class="ml-pdp-card-title">${item.nome || "Produto"}</div>
-                <div class="ml-pdp-card-reason">${item.motivo || ""}</div>
-                <a class="ml-pdp-link" href="${item.link_produto || "#"}">Ver produto</a>
+                <div class="ml-pdp-card-category">${item.categoria || item.category || ""}</div>
+                <div class="ml-pdp-card-title">${item.nome || item.name || "Produto"}</div>
+                ${priceHtml}
+                <div class="ml-pdp-card-reason">${item.motivo || item.reason || ""}</div>
+                <a class="ml-pdp-link" href="${item.link_produto || item.product_url || "#"}" target="_blank" rel="noopener">Ver produto</a>
               </div>
-            </div>`
-          )
-          .join("")}
+            </div>`;
+        }).join("")}
       </div>
     `;
   }
@@ -261,7 +284,7 @@
     body.innerHTML = "Carregando recomendações...";
 
     try {
-      const email = getLoggedEmail();
+      const email = await getLoggedEmail();
       if (!email) {
         body.innerHTML = "Não foi possível identificar o cliente logado.";
         return;
