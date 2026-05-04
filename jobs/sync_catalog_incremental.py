@@ -60,9 +60,7 @@ async def run() -> None:
 
                 while True:
                     print(f"7. buscando faixa {cat_label}: {start} até {start + page_size - 1}")
-                    payload = fetch_product_and_sku_ids(
-                        start, start + page_size - 1, category_id=category_id
-                    )
+                    payload = fetch_product_and_sku_ids(start, start + page_size - 1)
                     print("8. payload recebido")
 
                     data = payload.get("data") or {}
