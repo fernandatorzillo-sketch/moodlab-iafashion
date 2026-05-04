@@ -249,6 +249,43 @@
           grid-template-columns: 1fr;
         }
       }
+
+      .ml-card-price {
+        font-size: 15px;
+        font-weight: 600;
+        color: #5a4a3a;
+        margin: 4px 0 8px;
+      }
+      .ml-look-box {
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e8e0d8;
+      }
+      .ml-look-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #3a2e24;
+        margin: 0 0 12px;
+      }
+      .ml-shopper-intro { color: #6a5a4a; margin-bottom: 20px; font-size: 14px; }
+      .ml-shopper-question { margin-bottom: 20px; }
+      .ml-shopper-question label { display: block; font-weight: 600; font-size: 14px; color: #3a2e24; margin-bottom: 10px; }
+      .ml-shopper-options { display: flex; flex-wrap: wrap; gap: 8px; }
+      .ml-option-btn {
+        padding: 8px 16px; border: 1.5px solid #c8b89a; border-radius: 20px;
+        background: #fff; color: #5a4a3a; font-size: 13px; cursor: pointer; transition: all 0.2s;
+      }
+      .ml-option-btn:hover { background: #f5ece0; }
+      .ml-option-btn.selected { background: #8a6a3a; border-color: #8a6a3a; color: #fff; }
+      .ml-shopper-submit { margin-top: 8px; width: 100%; max-width: 280px; }
+      .ml-shopper-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ml-shopper-result { margin-top: 24px; }
+      .ml-shopper-perfil {
+        background: #f5ece0; border-left: 3px solid #8a6a3a;
+        padding: 12px 16px; border-radius: 6px; font-size: 14px; color: #3a2e24; margin-bottom: 16px;
+      }
+      .ml-shopper-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
+      .ml-shopper-dicas li { margin-bottom: 4px; }
     `;
     document.head.appendChild(style);
   }
@@ -448,15 +485,10 @@
   function buildCard(item, showReason) {
     const category = escapeHtml(item.category || item.categoria || item.department || "");
     const title = escapeHtml(item.name || item.nome || "Produto");
-    const reason = escapeHtml(item.reason || "");
+    const reason = escapeHtml(item.motivo || item.reason || "");
     const rawImageUrl = item.image_url || item.imagem_url || "";
-    // lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco na VTEX.
-    // Não alterar o domínio. Apenas normaliza o tamanho da imagem para 500x500.
     const imageUrl = rawImageUrl
       .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
-    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
-    // Usa proxy server-side para imagens VTEX (evita bloqueios cross-origin).
-    // Ambos os domínios lojaaguadecoco e aguadecoco são válidos para a Água de Coco.
     const isVtexImage = imageUrl && (
       imageUrl.includes("lojaaguadecoco.vteximg.com.br") ||
       imageUrl.includes("aguadecoco.vteximg.com.br") ||
@@ -465,10 +497,20 @@
     const finalImageUrl = isVtexImage
       ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
       : imageUrl;
+
+    // Não mostra recomendação sem imagem
+    if (showReason && !finalImageUrl) return "";
+
+    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
     const image = finalImageUrl
-      ? `<img src="${finalImageUrl}" alt="${title}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
-      : `<img src="${placeholderSvg}" alt="Sem imagem" />`
-    const url = item.url || item.link_produto || "#";
+      ? `<img src="${finalImageUrl}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
+      : `<img src="${placeholderSvg}" alt="Sem imagem" />`;
+
+    const url = item.url || item.link_produto || item.product_url || "#";
+    const rawPrice = item.price || item.preco || 0;
+    const priceHtml = rawPrice > 0
+      ? `<div class="ml-card-price">${Number(rawPrice).toLocaleString("pt-BR", {style:"currency", currency:"BRL"})}</div>`
+      : "";
 
     return `
       <div class="ml-card">
@@ -476,14 +518,16 @@
         <div class="ml-card-body">
           <div class="ml-card-category">${category}</div>
           <div class="ml-card-title">${title}</div>
-          ${showReason ? `<div class="ml-card-reason">${reason}</div>` : ""}
+          ${priceHtml}
+          ${showReason && reason ? `<div class="ml-card-reason">${reason}</div>` : ""}
           <div class="ml-card-actions">
-            <a class="ml-btn ml-btn-primary" href="${escapeHtml(url)}">Ver produto</a>
+            <a class="ml-btn ml-btn-primary" href="${url}" target="_blank" rel="noopener">Ver produto</a>
           </div>
         </div>
       </div>
     `;
   }
+
 
   function buildClosetSection(closet) {
     const items = Array.isArray(closet) ? closet : [];
@@ -528,26 +572,72 @@
     `;
   }
 
-  function buildLooksSection(looks) {
-    const list = Array.isArray(looks) ? looks : [];
-    if (!list.length) {
-      return `<div class="ml-section"><h2>Looks sugeridos</h2><div class="ml-empty">Ainda não encontramos combinações suficientes para montar looks.</div></div>`;
+  function generateLooksFromCloset(closet, recommendations) {
+    // Monta looks combinando peças do closet por categoria/departamento
+    const pieces = Array.isArray(closet) ? closet.filter(i => i.image_url || i.imagem_url) : [];
+    const recs   = Array.isArray(recommendations) ? recommendations.filter(i => i.image_url || i.imagem_url) : [];
+
+    const byType = {};
+    pieces.forEach(item => {
+      const key = (item.category || item.categoria || item.department || "outros").toLowerCase();
+      if (!byType[key]) byType[key] = [];
+      byType[key].push({...item, _source: "closet"});
+    });
+    recs.forEach(item => {
+      const key = (item.category || item.categoria || item.department || "outros").toLowerCase();
+      if (!byType[key]) byType[key] = [];
+      byType[key].push({...item, _source: "rec"});
+    });
+
+    const LOOK_RECIPES = [
+      {title: "Look Praia", keys: ["beachwear", "maio", "biquini", "saida_praia", "saida de praia"], min: 2},
+      {title: "Look Casual",  keys: ["vestido", "blusa", "calca", "short", "saia", "camisa", "camiseta"], min: 2},
+      {title: "Look Completo", keys: [], min: 2},
+    ];
+
+    const looks = [];
+    for (const recipe of LOOK_RECIPES) {
+      const pool = [];
+      if (recipe.keys.length) {
+        recipe.keys.forEach(k => { if (byType[k]) pool.push(...byType[k]); });
+      } else {
+        Object.values(byType).forEach(arr => pool.push(...arr));
+      }
+      // Deduplica por sku_id
+      const seen = new Set();
+      const unique = pool.filter(i => {
+        const id = i.sku_id || i.id || i.name;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      if (unique.length >= recipe.min) {
+        looks.push({title: recipe.title, items: unique.slice(0, 4)});
+      }
+      if (looks.length >= 2) break;
+    }
+    return looks;
+  }
+
+  function buildLooksSection(looks, closet, recommendations) {
+    const generated = (Array.isArray(looks) && looks.length)
+      ? looks
+      : generateLooksFromCloset(closet, recommendations);
+
+    if (!generated.length) {
+      return `<div class="ml-section"><h2>Looks sugeridos</h2><div class="ml-empty">Adicione mais peças ao seu closet para vermos combinações.</div></div>`;
     }
 
     return `
       <div class="ml-section">
         <h2>Looks sugeridos</h2>
-        ${list
-          .map(
-            (look) => `
-            <div class="ml-look-box" style="margin-bottom:16px;">
-              <h3 class="ml-look-title">${escapeHtml(look.title || "Look sugerido")}</h3>
-              <div class="ml-grid">
-                ${(look.items || []).map((item) => buildCard(item, false)).join("")}
-              </div>
-            </div>`
-          )
-          .join("")}
+        ${generated.map(look => `
+          <div class="ml-look-box">
+            <h3 class="ml-look-title">${escapeHtml(look.title || "Look sugerido")}</h3>
+            <div class="ml-grid">
+              ${(look.items || []).map(item => buildCard(item, false)).join("")}
+            </div>
+          </div>`).join("")}
       </div>
     `;
   }
@@ -589,9 +679,101 @@
     });
   }
 
+  function buildPersonalShopperSection(email) {
+    return `
+      <div class="ml-section" id="ml-shopper-section">
+        <h2>✨ Personal Shopper</h2>
+        <p class="ml-shopper-intro">Responda algumas perguntas e monte um look completo com suas peças + sugestões personalizadas.</p>
+        <form class="ml-shopper-form" id="ml-shopper-form">
+          <div class="ml-shopper-question">
+            <label>Para qual ocasião você precisa de um look?</label>
+            <div class="ml-shopper-options" data-field="occasion">
+              <button type="button" class="ml-option-btn" data-value="praia">🏖️ Praia</button>
+              <button type="button" class="ml-option-btn" data-value="resort">🌴 Resort</button>
+              <button type="button" class="ml-option-btn" data-value="jantar">🍷 Jantar</button>
+              <button type="button" class="ml-option-btn" data-value="viagem">✈️ Viagem</button>
+              <button type="button" class="ml-option-btn" data-value="dia_a_dia">☀️ Dia a dia</button>
+            </div>
+          </div>
+          <div class="ml-shopper-question">
+            <label>O que você quer encontrar?</label>
+            <div class="ml-shopper-options" data-field="goal">
+              <button type="button" class="ml-option-btn" data-value="cross_sell">🔀 Complementar meus looks</button>
+              <button type="button" class="ml-option-btn" data-value="up_sell">⬆️ Peças mais sofisticadas</button>
+              <button type="button" class="ml-option-btn" data-value="novidades">🆕 Novidades para meu estilo</button>
+            </div>
+          </div>
+          <div class="ml-shopper-question">
+            <label>Qual vibe você quer hoje?</label>
+            <div class="ml-shopper-options" data-field="style">
+              <button type="button" class="ml-option-btn" data-value="elegante">💎 Elegante</button>
+              <button type="button" class="ml-option-btn" data-value="casual">😎 Casual</button>
+              <button type="button" class="ml-option-btn" data-value="leve">🌊 Leve</button>
+            </div>
+          </div>
+          <button type="submit" class="ml-btn ml-btn-primary ml-shopper-submit" disabled>Montar meu look →</button>
+        </form>
+        <div id="ml-shopper-result" class="ml-shopper-result" style="display:none;"></div>
+      </div>
+    `;
+  }
+
+  function attachPersonalShopper(root, email) {
+    const form = root.querySelector("#ml-shopper-form");
+    if (!form) return;
+    const answers = {};
+
+    form.querySelectorAll(".ml-shopper-options").forEach(group => {
+      group.addEventListener("click", e => {
+        const btn = e.target.closest(".ml-option-btn");
+        if (!btn) return;
+        group.querySelectorAll(".ml-option-btn").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        answers[group.dataset.field] = btn.dataset.value;
+        // Enable submit when all 3 questions answered
+        const submitBtn = form.querySelector(".ml-shopper-submit");
+        if (Object.keys(answers).length >= 3) submitBtn.removeAttribute("disabled");
+      });
+    });
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const resultEl = root.querySelector("#ml-shopper-result");
+      resultEl.style.display = "block";
+      resultEl.innerHTML = `<div class="ml-loading"><div class="ml-spinner"></div><p>Montando seu look personalizado…</p></div>`;
+
+      try {
+        const resp = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/recommendations`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({email, answers, limit: 8}),
+        });
+        const data = await resp.json();
+        const recs = (data.recommendations || []).filter(i => i.image_url || i.imagem_url);
+        const perfil = data.perfil_estilo || "";
+        const dicas = Array.isArray(data.dicas_estilo) ? data.dicas_estilo : [];
+
+        if (!recs.length) {
+          resultEl.innerHTML = `<div class="ml-empty">Não encontramos sugestões para essa combinação. Tente outra ocasião!</div>`;
+          return;
+        }
+
+        resultEl.innerHTML = `
+          ${perfil ? `<p class="ml-shopper-perfil">${escapeHtml(perfil)}</p>` : ""}
+          ${dicas.length ? `<ul class="ml-shopper-dicas">${dicas.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : ""}
+          <h3>Sugestões para você</h3>
+          <div class="ml-grid">${recs.map(i => buildCard(i, true)).join("")}</div>
+        `;
+      } catch (err) {
+        resultEl.innerHTML = `<div class="ml-empty">Erro ao buscar sugestões. Tente novamente.</div>`;
+      }
+    });
+  }
+
   function renderAccountCloset(root, rawData) {
     const data = normalizeApiData(rawData);
     const customerName = safeText(data.customer && data.customer.name) || "Cliente";
+    const email = (data.customer && data.customer.email) || "";
 
     root.innerHTML = `
       <div class="ml-closet-shell">
@@ -602,12 +784,14 @@
         </div>
         ${buildStats(data)}
         ${buildClosetSection(data.closet)}
-        ${buildLooksSection(data.looks)}
+        ${buildLooksSection(data.looks, data.closet, data.recommendations)}
         ${buildRecommendationsSection(data.recommendations)}
+        ${buildPersonalShopperSection(email)}
       </div>
     `;
 
     attachClosetFilters(root);
+    attachPersonalShopper(root, email);
   }
 
   async function bootstrap() {
