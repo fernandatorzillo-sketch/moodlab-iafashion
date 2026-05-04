@@ -10,6 +10,8 @@ from services.vtex_catalog_service import (
     fetch_product_by_id,
     fetch_sku_by_id,
     fetch_category_map,
+    fetch_product_specifications,
+    SPEC_FIELD_MAP,
 )
 
 print("2. imports concluídos")
@@ -105,20 +107,36 @@ async def run() -> None:
                             dept_entry = category_map.get(dept_id) or {}
                             cat_entry  = category_map.get(cat_id) or {}
 
-                            dept_from_spec = extract_first_spec(product, ["departamento", "department"])
-                            cat_from_spec  = extract_first_spec(product, ["tipo de produto", "tipo"])
+                            # Busca specs via endpoint dedicado (ProductGet não retorna specs)
+                            specs = fetch_product_specifications(str(product_id))
+
+                            def spec(key: str) -> str | None:
+                                """Busca spec por chave exata ou parcial do SPEC_FIELD_MAP."""
+                                # Busca direta
+                                val = specs.get(key.lower())
+                                if val:
+                                    return val
+                                # Busca parcial (ex: "ocasião" dentro de "1- ocasião")
+                                for spec_key, spec_val in specs.items():
+                                    if key.lower() in spec_key or spec_key in key.lower():
+                                        return spec_val
+                                return None
+
+                            dept_from_spec = spec("departamento")
+                            cat_from_spec  = spec("tipo de produto") or spec("0- produto")
                             dept_from_map  = dept_entry.get("name") or cat_entry.get("department_name") or None
                             cat_from_map   = cat_entry.get("name") or None
 
                             row.department   = dept_from_spec or dept_from_map or product.get("DepartmentName")
-                            row.category     = cat_from_spec  or cat_from_map  or product.get("CategoryName")
-                            row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
-                            row.occasion     = extract_first_spec(product, ["ocasião", "ocasiao"])
-                            row.color        = extract_first_spec(product, ["cores", "cor"])
-                            row.print_name   = extract_first_spec(product, ["estamparia"])
-                            row.size         = extract_first_spec(product, ["tamanho"])
-                            row.gender       = extract_first_spec(product, ["gênero", "genero"])
-                            row.collection   = extract_first_spec(product, ["coleção", "colecao"])
+                            row.category     = cat_from_map or product.get("CategoryName")
+                            row.product_type = spec("tipo de produto") or spec("0- produto") or spec("tipo")
+                            row.occasion     = spec("ocasião") or spec("ocasiao")
+                            row.color        = spec("cores") or spec("cor")
+                            row.print_name   = spec("estamparia")
+                            row.size         = spec("tamanho")
+                            row.gender       = spec("0- gênero") or spec("gênero") or spec("genero")
+                            # Linha: AGUA=praia, VIDA=roupa, LUZ=festa, UNDERWEAR
+                            row.collection   = spec("0- linha") or spec("linha") or spec("coleção") or spec("colecao")
 
                             row.image_url = (first_sku or {}).get("ImageUrl")
 

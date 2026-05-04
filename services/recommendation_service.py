@@ -108,76 +108,141 @@ def _is_blocked_payload(name, category, department) -> bool:
     return any(term in text for term in blocked_terms)
 
 
-def score_product(product: CatalogProduct, occasion: str = "", goal: str = "", style: str = "") -> float:
-    text = normalize(
-        " ".join(
-            [
-                str(product.name or ""),
-                str(product.category or ""),
-                str(product.department or ""),
-                str(product.product_type or ""),
-                str(product.occasion or ""),
-                str(product.collection or ""),
-            ]
-        )
-    )
+# Mapeamento Linha → ocasião
+LINHA_TO_OCCASION = {
+    "agua": "praia",
+    "vida": "casual",
+    "luz": "jantar",
+    "underwear": "casual",
+    "lifestyle": "casual",
+    "casa": None,  # não é moda
+}
+
+# Harmonias de cor (cores que combinam entre si)
+COLOR_HARMONY = {
+    "preto": ["branco", "bege", "off white", "dourado", "prata", "colorido"],
+    "branco": ["preto", "bege", "off white", "azul", "verde", "colorido"],
+    "bege": ["branco", "preto", "marrom", "off white", "dourado"],
+    "azul": ["branco", "bege", "off white", "prata"],
+    "verde": ["branco", "bege", "off white", "amarelo"],
+    "amarelo": ["branco", "verde", "laranja", "colorido"],
+    "rosa": ["branco", "bege", "lilás", "off white"],
+    "laranja": ["branco", "amarelo", "colorido"],
+    "vermelho": ["preto", "branco", "bege"],
+    "marrom": ["bege", "off white", "branco"],
+    "off white": ["preto", "bege", "branco", "marrom"],
+    "colorido": ["branco", "preto", "bege"],
+    "prata": ["azul", "preto", "branco"],
+    "dourado": ["preto", "bege", "marrom"],
+}
+
+
+def colors_harmonize(color1: str, color2: str) -> bool:
+    """Verifica se duas cores combinam."""
+    if not color1 or not color2:
+        return True  # sem info de cor, permite
+    c1 = normalize(color1)
+    c2 = normalize(color2)
+    if c1 == c2:
+        return True  # monocromático sempre combina
+    harmonics = COLOR_HARMONY.get(c1, [])
+    return c2 in harmonics or c1 in COLOR_HARMONY.get(c2, [])
+
+
+def prints_harmonize(print1: str, print2: str) -> bool:
+    """Estampado + Liso combina. Dois estampados geralmente não."""
+    if not print1 or not print2:
+        return True
+    p1 = normalize(print1)
+    p2 = normalize(print2)
+    if p1 == p2 and p1 == "liso":
+        return True  # liso + liso OK
+    if p1 == p2 and p1 == "estampado":
+        return False  # dois estampados normalmente não
+    return True  # estampado + liso = OK
+
+
+def score_product(
+    product: CatalogProduct,
+    occasion: str = "",
+    goal: str = "",
+    style: str = "",
+    closet_color: str = "",
+    closet_print: str = "",
+) -> float:
+    text = normalize(" ".join([
+        str(product.name or ""), str(product.category or ""),
+        str(product.department or ""), str(product.product_type or ""),
+        str(product.occasion or ""), str(product.collection or ""),
+    ]))
 
     score = 1.0
+    occasion_n = normalize(occasion)
 
-    if occasion:
-        if occasion in text:
+    # Score por Linha (campo 0- Linha)
+    linha = normalize(product.collection or "")
+    if linha and linha in LINHA_TO_OCCASION:
+        linha_occasion = LINHA_TO_OCCASION[linha]
+        if linha_occasion == occasion_n:
+            score += 6  # match exato de linha + ocasião
+        elif linha is None:
+            score -= 10  # produtos de casa, bloqueia
+
+    # Score por campo Ocasião direto
+    product_occasion = normalize(product.occasion or "")
+    if occasion_n and product_occasion:
+        if occasion_n == "praia" and product_occasion in ["praia", "agua", "saída de praia", "saida de praia"]:
+            score += 8
+        elif occasion_n == "jantar" and product_occasion in ["luz", "jantar", "festa"]:
+            score += 8
+        elif occasion_n in product_occasion or product_occasion in occasion_n:
             score += 5
 
-        if occasion == "praia" and any(
-            x in text for x in ["biquini", "biquíni", "maiô", "maio", "saida", "saída", "pareo", "pareô"]
-        ):
-            score += 5
+    # Score por tipo de produto para cross_sell
+    if occasion_n == "praia" and any(
+        x in text for x in ["biquini", "biquíni", "maiô", "maio", "saida", "saída", "canga", "sunga"]
+    ):
+        score += 5
 
-        if occasion == "resort" and any(
-            x in text for x in ["vestido", "camisa", "pantalona", "saia", "linho"]
-        ):
-            score += 4
+    if occasion_n == "resort" and any(x in text for x in ["vestido", "camisa", "pantalona", "saia"]):
+        score += 4
 
-        if occasion == "jantar" and any(
-            x in text for x in ["vestido", "camisa", "calça", "calca", "alfaiataria"]
-        ):
-            score += 4
+    if occasion_n == "jantar" and any(x in text for x in ["vestido", "camisa", "alfaiataria"]):
+        score += 4
 
-    if goal == "cross_sell":
-        if any(
-            x in text
-            for x in [
-                "saida",
-                "saída",
-                "pareo",
-                "pareô",
-                "camisa",
-                "short",
-                "saia",
-                "calça",
-                "calca",
-                "top",
-                "blusa",
-            ]
-        ):
-            score += 4
+    if goal == "cross_sell" and any(
+        x in text for x in ["saida", "saída", "camisa", "short", "saia", "calça", "calca", "top", "blusa"]
+    ):
+        score += 4
 
-    if goal == "up_sell":
-        if any(x in text for x in ["vestido", "resort", "bordado", "alfaiataria", "camisa", "linho"]):
-            score += 5
+    if goal == "up_sell" and any(
+        x in text for x in ["vestido", "resort", "bordado", "alfaiataria", "camisa", "linho"]
+    ):
+        score += 5
 
     if style:
         if style in text:
             score += 3
-
         if style == "elegante" and any(x in text for x in ["vestido", "camisa", "alfaiataria"]):
             score += 3
-
-        if style == "leve" and any(x in text for x in ["linho", "praia", "resort", "saida", "saída", "pareo", "pareô"]):
+        if style == "leve" and any(x in text for x in ["linho", "praia", "resort", "saida", "saída"]):
             score += 3
-
         if style == "casual" and any(x in text for x in ["short", "camiseta", "blusa", "top"]):
             score += 3
+
+    # Harmonia de cor com o closet
+    if closet_color and product.color:
+        if colors_harmonize(closet_color, product.color):
+            score += 3
+        else:
+            score -= 2  # cor não combina, penaliza
+
+    # Harmonia de estampa com o closet
+    if closet_print and product.print_name:
+        if prints_harmonize(closet_print, product.print_name):
+            score += 2
+        else:
+            score -= 3  # dois estampados, penaliza
 
     return score
 
@@ -343,8 +408,17 @@ async def get_customer_recommendations(
         if is_fashion_product(p) and is_gender_match(p.name, p.category, p.department)
     ]
 
+    # Obtém cor e estampa dominante do closet para harmonia
+    closet_colors = [normalize(i.color or "") for i in await _get_closet_items(email)]
+    closet_prints = [normalize(i.print_name or "") for i in await _get_closet_items(email)]
+    dominant_closet_color = max(set(closet_colors), key=closet_colors.count) if closet_colors else ""
+    dominant_closet_print = max(set(closet_prints), key=closet_prints.count) if closet_prints else ""
+
     scored = [
-        (score_product(product, occasion=occasion, goal=goal, style=style), product)
+        (score_product(
+            product, occasion=occasion, goal=goal, style=style,
+            closet_color=dominant_closet_color, closet_print=dominant_closet_print
+        ), product)
         for product in products
     ]
 
@@ -375,6 +449,21 @@ async def get_customer_recommendations(
         )
         for score, product in scored[:limit]
     ]
+
+
+async def _get_closet_items(email: str):
+    """Retorna itens do closet para análise de cor/estampa."""
+    try:
+        from models.customer_closet_item import CustomerClosetItem
+        async with AsyncSessionLocal() as s:
+            result = await s.execute(
+                select(CustomerClosetItem)
+                .where(CustomerClosetItem.email == email)
+                .limit(20)
+            )
+            return result.scalars().all()
+    except Exception:
+        return []
 
 
 async def _get_customer_profile(email: str, session) -> dict:

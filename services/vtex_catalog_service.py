@@ -116,8 +116,72 @@ def fetch_sku_by_id(sku_id: str) -> dict[str, Any]:
     url = f"https://{account}.vtexcommercestable.com.br/api/catalog_system/pvt/sku/stockkeepingunitbyid/{sku_id}"
     response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
-    data = response.json() or {}
-
     # lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco na VTEX.
-    # Não alterar a URL retornada pela API.
-    return data
+    return response.json() or {}
+
+
+def fetch_product_specifications(product_id: str) -> dict[str, str]:
+    """
+    Busca especificações do produto via endpoint dedicado da VTEX.
+    O ProductGet NÃO retorna specs — é necessária esta chamada separada.
+
+    Retorna dict: {field_name_lower: first_value}
+    Ex: {"cores": "Preto", "ocasião": "PRAIA", "0- linha": "AGUA", ...}
+
+    Mapeamento dos campos (do arquivo de especificações da Água de Coco):
+      "Ocasião"       → occasion  (PRAIA, ROUPA, SAIDA DE PRAIA, ACESSORIOS...)
+      "0- Linha"      → collection (AGUA=praia, VIDA=roupa, LUZ=festa, UNDERWEAR)
+      "0- Modelo"     → model     (CORTININHA, ALCINHA, SAIA MIDI...)
+      "Tipo de Produto" → product_type (BIQUINI CALCINHA, MAIO, VESTIDO...)
+      "Cores"         → color     (Amarelo, Azul, Preto...)
+      "Estamparia"    → print_name (ESTAMPADO, LISO, LISO TRABALHADO)
+      "0- Gênero"     → gender    (FEMININO, MASCULINO, UNISSEX)
+    """
+    try:
+        account, app_key, app_token = get_vtex_credentials()
+        headers = get_headers(app_key, app_token)
+        url = f"https://{account}.vtexcommercestable.com.br/api/catalog_system/pvt/products/{product_id}/specification"
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        specs = response.json() or []
+
+        result = {}
+        for spec in specs:
+            name = str(spec.get("FieldName") or "").strip()
+            values = spec.get("FieldValues") or []
+            if name and values:
+                result[name.lower()] = str(values[0]).strip()
+        return result
+    except Exception as e:
+        print(f"  [specs] Erro ao buscar specs do produto {product_id}: {e}")
+        return {}
+
+
+# Mapeamento: chave do dict de specs → campo do modelo CatalogProduct
+SPEC_FIELD_MAP = {
+    # Cores
+    "cores":             "color",
+    # Estamparia
+    "estamparia":        "print_name",
+    # Gênero
+    "0- gênero":         "gender",
+    "0- genero":         "gender",
+    "gênero":            "gender",
+    "genero":            "gender",
+    # Ocasião
+    "ocasião":           "occasion",
+    "ocasiao":           "occasion",
+    # Linha (AGUA/VIDA/LUZ/UNDERWEAR)
+    "0- linha":          "collection",
+    "linha":             "collection",
+    # Tipo de produto
+    "tipo de produto":   "product_type",
+    "1- tipo de produto":"product_type",
+    "0- produto":        "product_type",
+    # Modelo (detalhes de corte/modelo)
+    "0- modelo":         "model",
+    "modelo":            "model",
+    # Departamento (pode vir das specs)
+    "departamento":      "department",
+    "0- departamento":   "department",
+}
