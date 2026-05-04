@@ -450,19 +450,23 @@
     const title = escapeHtml(item.name || item.nome || "Produto");
     const reason = escapeHtml(item.reason || "");
     const rawImageUrl = item.image_url || item.imagem_url || "";
+    // lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco na VTEX.
+    // Não alterar o domínio. Apenas normaliza o tamanho da imagem para 500x500.
     const imageUrl = rawImageUrl
-      .replace("lojaaguadecoco.vteximg.com.br", "aguadecoco.vteximg.com.br")
-      .replace("lojaaguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
-      .replace("aguadecoco.vtexassets.com", "aguadecoco.vteximg.com.br")
       .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
     const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
-    // Usa proxy server-side quando a URL é da vteximg (evita bloqueios cross-origin)
-    const isVtexImage = imageUrl && imageUrl.includes("vteximg.com.br");
+    // Usa proxy server-side para imagens VTEX (evita bloqueios cross-origin).
+    // Ambos os domínios lojaaguadecoco e aguadecoco são válidos para a Água de Coco.
+    const isVtexImage = imageUrl && (
+      imageUrl.includes("lojaaguadecoco.vteximg.com.br") ||
+      imageUrl.includes("aguadecoco.vteximg.com.br") ||
+      imageUrl.includes("vtexassets.com")
+    );
     const finalImageUrl = isVtexImage
       ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
       : imageUrl;
     const image = finalImageUrl
-      ? `<img src="${escapeHtml(finalImageUrl)}" alt="${title}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
+      ? `<img src="${finalImageUrl}" alt="${title}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
       : `<img src="${placeholderSvg}" alt="Sem imagem" />`
     const url = item.url || item.link_produto || "#";
 
