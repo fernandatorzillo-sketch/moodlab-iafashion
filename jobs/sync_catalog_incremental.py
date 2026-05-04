@@ -5,6 +5,8 @@ print("1. arquivo sync_catalog_incremental carregado")
 from models.catalog_product import CatalogProduct
 from services.closet_db import AsyncSessionLocal, init_closet_db
 from services.sync_control_service import mark_sync_error, mark_sync_success
+import time
+
 from services.vtex_catalog_service import (
     fetch_product_and_sku_ids,
     fetch_product_by_id,
@@ -13,6 +15,28 @@ from services.vtex_catalog_service import (
     fetch_product_specifications,
     SPEC_FIELD_MAP,
 )
+
+
+def vtex_get_with_retry(fn, *args, max_retries=3, **kwargs):
+    """Chama uma função da VTEX com retry e backoff em caso de 502/503/429."""
+    import requests
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if status in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                wait = (attempt + 1) * 3  # 3s, 6s, 9s
+                print(f"  [retry] {status} na VTEX, aguardando {wait}s... (tentativa {attempt+1}/{max_retries})")
+                time.sleep(wait)
+                continue
+            raise
+        except Exception:
+            if attempt < max_retries - 1:
+                time.sleep(2)
+                continue
+            raise
+    raise RuntimeError(f"Falha após {max_retries} tentativas")
 
 print("2. imports concluídos")
 
@@ -62,7 +86,8 @@ async def run() -> None:
 
                 while True:
                     print(f"7. buscando faixa {cat_label}: {start} até {start + page_size - 1}")
-                    payload = fetch_product_and_sku_ids(start, start + page_size - 1)
+                    payload = vtex_get_with_retry(fetch_product_and_sku_ids, start, start + page_size - 1)
+                    time.sleep(0.5)  # delay entre páginas
                     print("8. payload recebido")
 
                     data = payload.get("data") or {}
@@ -75,17 +100,20 @@ async def run() -> None:
                     for product_id, sku_ids in data.items():
                         try:
                             print(f"11. processando product_id={product_id}")
-                            product = fetch_product_by_id(str(product_id))
+                            product = vtex_get_with_retry(fetch_product_by_id, str(product_id))
                             print(f"12. product carregado | product_id={product_id}")
 
                             first_sku = None
                             sku_list = sku_ids or []
                             if sku_list:
                                 print(f"13. sku principal | sku_id={sku_list[0]}")
-                                first_sku = fetch_sku_by_id(str(sku_list[0]))
+                                first_sku = vtex_get_with_retry(fetch_sku_by_id, str(sku_list[0]))
                                 print(f"14. sku carregado | sku_id={sku_list[0]}")
                             else:
                                 print(f"13. sem sku_list para product_id={product_id}")
+
+                            # Delay entre requests para evitar rate limiting da VTEX
+                            time.sleep(0.3)
 
                             row = await session.get(CatalogProduct, str(product_id))
                             if not row:
@@ -108,7 +136,8 @@ async def run() -> None:
                             cat_entry  = category_map.get(cat_id) or {}
 
                             # Busca specs via endpoint dedicado (ProductGet não retorna specs)
-                            specs = fetch_product_specifications(str(product_id))
+                            specs = vtex_get_with_retry(fetch_product_specifications, str(product_id))
+                            time.sleep(0.2)  # delay adicional para specs
 
                             def spec(key: str) -> str | None:
                                 """Busca spec por chave exata ou parcial do SPEC_FIELD_MAP."""
