@@ -286,6 +286,19 @@
       }
       .ml-shopper-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
       .ml-shopper-dicas li { margin-bottom: 4px; }
+      .ml-btn-outline {
+        background: #fff;
+        border: 1.5px solid #b7a36b;
+        color: #7c6c52;
+        padding: 12px 32px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ml-btn-outline:hover { background: #f5ece0; }
+      .ml-btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
       .ml-card-label {
         display: inline-block;
         font-size: 11px;
@@ -706,17 +719,26 @@
     `;
   }
 
-  function buildRecommendationsSection(recommendations) {
+  function buildRecommendationsSection(recommendations, email) {
     const items = Array.isArray(recommendations) ? recommendations : [];
+    const INITIAL = 8;
 
     return `
-      <div class="ml-section">
+      <div class="ml-section" id="ml-recs-section">
         <h2>Recomendações para você</h2>
-        ${
-          items.length
-            ? `<div class="ml-grid">${items.map((item) => buildCard(item, true)).join("")}</div>`
-            : `<div class="ml-empty">Sem recomendações no momento.</div>`
-        }
+        ${items.length ? `
+          <div class="ml-grid" id="ml-recs-grid">
+            ${items.slice(0, INITIAL).map(item => buildCard(item, true)).join("")}
+          </div>
+          ${items.length > INITIAL ? `
+            <div class="ml-recs-more-wrap" style="text-align:center;margin-top:20px;">
+              <button class="ml-btn ml-btn-outline" id="ml-recs-more-btn" type="button"
+                data-offset="${INITIAL}" data-email="${escapeHtml(email || "")}">
+                Ver mais sugestões
+              </button>
+            </div>
+          ` : ""}
+        ` : `<div class="ml-empty">Sem recomendações no momento.</div>`}
       </div>
     `;
   }
@@ -740,6 +762,49 @@
         const show = category === "Todos" || itemCategory === category;
         item.style.display = show ? "" : "none";
       });
+    });
+  }
+
+  function attachVerMais(root, email) {
+    const btn = root.querySelector("#ml-recs-more-btn");
+    if (!btn) return;
+
+    btn.addEventListener("click", async function () {
+      const offset = parseInt(btn.dataset.offset || "8", 10);
+      btn.textContent = "Carregando…";
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/recommendations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, answers: {}, limit: 24 }),
+        });
+        const data = await resp.json();
+        const all = Array.isArray(data.recommendations) ? data.recommendations : [];
+        const next = all.slice(offset, offset + 8).filter(i => i.image_url || i.imagem_url);
+
+        const grid = root.querySelector("#ml-recs-grid");
+        if (grid && next.length) {
+          next.forEach(item => {
+            const div = document.createElement("div");
+            div.innerHTML = buildCard(item, true);
+            grid.appendChild(div.firstElementChild);
+          });
+          btn.dataset.offset = String(offset + next.length);
+          if (offset + next.length >= all.length) {
+            btn.closest(".ml-recs-more-wrap").style.display = "none";
+          } else {
+            btn.textContent = "Ver mais sugestões";
+            btn.disabled = false;
+          }
+        } else {
+          btn.closest(".ml-recs-more-wrap").style.display = "none";
+        }
+      } catch (e) {
+        btn.textContent = "Ver mais sugestões";
+        btn.disabled = false;
+      }
     });
   }
 
@@ -849,12 +914,13 @@
         ${buildStats(data)}
         ${buildClosetSection(data.closet)}
         ${buildLooksSection(data.looks, data.closet, data.recommendations)}
-        ${buildRecommendationsSection(data.recommendations)}
+        ${buildRecommendationsSection(data.recommendations, email)}
         ${buildPersonalShopperSection(email)}
       </div>
     `;
 
     attachClosetFilters(root);
+    attachVerMais(root, email);
     attachPersonalShopper(root, email);
   }
 
