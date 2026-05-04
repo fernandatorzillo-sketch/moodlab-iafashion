@@ -113,11 +113,11 @@ async def run() -> None:
                 INNER JOIN orders o
                     ON o.order_id = oi.order_id
 
-                -- LEFT JOIN: mantém TODOS os itens comprados pelo cliente,
-                -- mesmo os mais antigos que não estão mais no catálogo ativo.
-                -- A filtragem de Casa/Lifestyle é feita por nome e departamento abaixo.
+                -- JOIN com catálogo: tenta por sku_id primeiro, fallback por product_id.
+                -- O catálogo armazena apenas o primeiro SKU de cada produto, mas os
+                -- pedidos podem ter SKUs de variações (tamanho/cor) diferentes.
                 LEFT JOIN catalog_products cp
-                    ON cp.sku_id = oi.sku_id
+                    ON cp.product_id = oi.product_id
 
                 WHERE
                     o.creation_date >= :cutoff
