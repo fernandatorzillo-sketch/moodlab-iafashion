@@ -286,6 +286,28 @@
       }
       .ml-shopper-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
       .ml-shopper-dicas li { margin-bottom: 4px; }
+      .ml-card-label {
+        display: inline-block;
+        font-size: 11px;
+        background: #f0e6d0;
+        color: #7a5c2a;
+        border-radius: 4px;
+        padding: 2px 8px;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+      .ml-card[data-source="rec"] .ml-card-image::after {
+        content: "✦ Sugestão";
+        position: absolute;
+        top: 8px; left: 8px;
+        background: rgba(183,163,107,0.92);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 99px;
+      }
+      .ml-card-image { position: relative; }
     `;
     document.head.appendChild(style);
   }
@@ -519,6 +541,7 @@
           <div class="ml-card-category">${category}</div>
           <div class="ml-card-title">${title}</div>
           ${priceHtml}
+          ${item._label ? `<div class="ml-card-label">${escapeHtml(item._label)}</div>` : ""}
           ${showReason && reason ? `<div class="ml-card-reason">${reason}</div>` : ""}
           <div class="ml-card-actions">
             <a class="ml-btn ml-btn-primary" href="${url}" target="_blank" rel="noopener">Ver produto</a>
@@ -572,50 +595,91 @@
     `;
   }
 
+  // Agrupa peças por tipo (ex: "maio", "biquini", "saida", "vestido")
+  function classifyPiece(item) {
+    const name = (item.name || item.nome || "").toLowerCase();
+    const cat  = (item.category || item.categoria || "").toLowerCase();
+    if (/saída|saida|canga/.test(name + cat)) return "saida";
+    if (/maio|maiô/.test(name + cat))         return "maio";
+    if (/sutiã|sutia|biquíni top|biquini top/.test(name)) return "top_biquini";
+    if (/calcinha|biquíni|biquini/.test(name + cat)) return "bottom_biquini";
+    if (/vestido/.test(name + cat))           return "vestido";
+    if (/blusa|cropped/.test(name + cat))     return "blusa";
+    if (/calça|calca|short|bermuda/.test(name + cat)) return "bottom";
+    if (/camisa|camiseta/.test(name + cat))   return "camisa";
+    if (/saia/.test(name + cat))              return "saia";
+    if (/sandalia|sandália|rasteira|chinelo/.test(name + cat)) return "calcado";
+    if (/bolsa|necessaire/.test(name + cat))  return "bolsa";
+    if (/chapeu|chapéu|viseira/.test(name + cat)) return "chapeu";
+    return "outro";
+  }
+
   function generateLooksFromCloset(closet, recommendations) {
-    // Monta looks combinando peças do closet por categoria/departamento
-    const pieces = Array.isArray(closet) ? closet.filter(i => i.image_url || i.imagem_url) : [];
-    const recs   = Array.isArray(recommendations) ? recommendations.filter(i => i.image_url || i.imagem_url) : [];
+    const withImg = i => !!(i.image_url || i.imagem_url);
+    const pieces = Array.isArray(closet) ? closet.filter(withImg) : [];
+    const recs   = Array.isArray(recommendations) ? recommendations.filter(withImg) : [];
 
-    const byType = {};
-    pieces.forEach(item => {
-      const key = (item.category || item.categoria || item.department || "outros").toLowerCase();
-      if (!byType[key]) byType[key] = [];
-      byType[key].push({...item, _source: "closet"});
-    });
-    recs.forEach(item => {
-      const key = (item.category || item.categoria || item.department || "outros").toLowerCase();
-      if (!byType[key]) byType[key] = [];
-      byType[key].push({...item, _source: "rec"});
-    });
+    // Marca fonte para mostrar "do seu closet" vs "sugestão"
+    const all = [
+      ...pieces.map(i => ({...i, _source: "closet", _type: classifyPiece(i)})),
+      ...recs.map(i   => ({...i, _source: "rec",    _type: classifyPiece(i)})),
+    ];
 
-    const LOOK_RECIPES = [
-      {title: "Look Praia", keys: ["beachwear", "maio", "biquini", "saida_praia", "saida de praia"], min: 2},
-      {title: "Look Casual",  keys: ["vestido", "blusa", "calca", "short", "saia", "camisa", "camiseta"], min: 2},
-      {title: "Look Completo", keys: [], min: 2},
+    // Receitas de look: lista de tipos que fazem sentido juntos
+    const RECIPES = [
+      {
+        title: "Look Praia",
+        required: [["top_biquini", "maio"], ["bottom_biquini", "maio"]],
+        optional: ["saida", "calcado", "chapeu", "bolsa"],
+      },
+      {
+        title: "Look Casual",
+        required: [["vestido"], ["blusa", "camisa", "camiseta"], ["bottom", "saia"]],
+        optional: ["calcado", "bolsa"],
+      },
     ];
 
     const looks = [];
-    for (const recipe of LOOK_RECIPES) {
-      const pool = [];
-      if (recipe.keys.length) {
-        recipe.keys.forEach(k => { if (byType[k]) pool.push(...byType[k]); });
-      } else {
-        Object.values(byType).forEach(arr => pool.push(...arr));
+
+    for (const recipe of RECIPES) {
+      const usedIds = new Set();
+      const lookItems = [];
+
+      // Tenta preencher cada grupo required (pega 1 do closet ou 1 sugestão)
+      for (const group of recipe.required) {
+        const candidate = all.find(i =>
+          group.includes(i._type) && !usedIds.has(i.sku_id || i.name)
+        );
+        if (candidate) {
+          usedIds.add(candidate.sku_id || candidate.name);
+          // Adiciona nota se é sugestão
+          if (candidate._source === "rec") {
+            candidate._label = "Sugestão para complementar";
+          }
+          lookItems.push(candidate);
+        }
       }
-      // Deduplica por sku_id
-      const seen = new Set();
-      const unique = pool.filter(i => {
-        const id = i.sku_id || i.id || i.name;
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-      if (unique.length >= recipe.min) {
-        looks.push({title: recipe.title, items: unique.slice(0, 4)});
+
+      // Adiciona opcionais até 4 peças
+      for (const optType of recipe.optional) {
+        if (lookItems.length >= 4) break;
+        const opt = all.find(i =>
+          i._type === optType && !usedIds.has(i.sku_id || i.name)
+        );
+        if (opt) {
+          usedIds.add(opt.sku_id || opt.name);
+          if (opt._source === "rec") opt._label = "Sugestão para complementar";
+          lookItems.push(opt);
+        }
       }
-      if (looks.length >= 2) break;
+
+      // Só monta look se tem pelo menos 2 peças de tipos DIFERENTES
+      const types = new Set(lookItems.map(i => i._type));
+      if (lookItems.length >= 2 && types.size >= 2) {
+        looks.push({title: recipe.title, items: lookItems});
+      }
     }
+
     return looks;
   }
 
