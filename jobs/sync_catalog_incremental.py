@@ -79,10 +79,26 @@ async def run() -> None:
 
             print(f"6. início do loop | page_size={page_size}")
 
+            # Verifica se há checkpoint salvo para retomar de onde parou
+            checkpoint_key = "sync_catalog_start_offset"
+            try:
+                from sqlalchemy import text as sql_text
+                ck = await session.execute(
+                    sql_text("SELECT reference_value FROM sync_control WHERE job_name = :k"),
+                    {"k": checkpoint_key}
+                )
+                ck_row = ck.fetchone()
+                resume_start = int(ck_row[0]) if ck_row and ck_row[0] and ck_row[0].isdigit() else 0
+                if resume_start > 0:
+                    print(f"6. RETOMANDO do checkpoint: start={resume_start}")
+            except Exception:
+                resume_start = 0
+
             for category_id in fashion_category_ids:
                 cat_label = f"categoria={category_id}" if category_id else "todas"
                 print(f"6.1 iniciando sync para {cat_label}")
-                start = 0
+                start = resume_start
+                resume_start = 0  # só usa na primeira categoria
 
                 while True:
                     print(f"7. buscando faixa {cat_label}: {start} até {start + page_size - 1}")
@@ -195,6 +211,18 @@ async def run() -> None:
                     start += page_size
                     print(f"17. próxima faixa | start={start}")
 
+                    # Salva checkpoint para retomada em caso de interrupção
+                    try:
+                        from sqlalchemy import text as sql_text
+                        await session.execute(sql_text(
+                            "INSERT INTO sync_control (job_name, reference_value, status, updated_at) "
+                            "VALUES (:k, :v, 'running', NOW()) "
+                            "ON CONFLICT (job_name) DO UPDATE SET reference_value=:v, updated_at=NOW()"
+                        ), {"k": "sync_catalog_start_offset", "v": str(start)})
+                        await session.commit()
+                    except Exception as ck_err:
+                        print(f"  [checkpoint] erro ao salvar: {ck_err}")
+
             # Desativa produtos não-moda pelo nome
             print("18. desativando produtos não-moda...")
             from sqlalchemy import text as sql_text
@@ -207,6 +235,15 @@ async def run() -> None:
                 )
             await session.commit()
             print("18.1 desativação concluída")
+
+            # Limpa checkpoint — sync concluído com sucesso
+            try:
+                from sqlalchemy import text as sql_text
+                await session.execute(sql_text(
+                    "DELETE FROM sync_control WHERE job_name = 'sync_catalog_start_offset'"
+                ))
+            except Exception:
+                pass
 
             await mark_sync_success(
                 session=session,
