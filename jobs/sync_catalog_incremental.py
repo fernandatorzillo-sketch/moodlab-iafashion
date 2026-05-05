@@ -88,10 +88,12 @@ async def run() -> None:
                     {"k": checkpoint_key}
                 )
                 ck_row = ck.fetchone()
-                resume_start = int(ck_row[0]) if ck_row and ck_row[0] and ck_row[0].isdigit() else 0
+                resume_start = int(ck_row[0]) if ck_row and ck_row[0] and str(ck_row[0]).isdigit() else 0
                 if resume_start > 0:
                     print(f"6. RETOMANDO do checkpoint: start={resume_start}")
-            except Exception:
+            except Exception as ck_read_err:
+                print(f"  [checkpoint] erro ao ler (começando do zero): {ck_read_err}")
+                await session.rollback()
                 resume_start = 0
 
             for category_id in fashion_category_ids:
@@ -214,14 +216,20 @@ async def run() -> None:
                     # Salva checkpoint para retomada em caso de interrupção
                     try:
                         from sqlalchemy import text as sql_text
-                        await session.execute(sql_text(
-                            "INSERT INTO sync_control (job_name, reference_value, status, updated_at) "
-                            "VALUES (:k, :v, 'running', NOW()) "
-                            "ON CONFLICT (job_name) DO UPDATE SET reference_value=:v, updated_at=NOW()"
+                        # Tenta UPDATE primeiro, depois INSERT se não existir
+                        upd = await session.execute(sql_text(
+                            "UPDATE sync_control SET reference_value=:v, updated_at=NOW() "
+                            "WHERE job_name=:k"
                         ), {"k": "sync_catalog_start_offset", "v": str(start)})
+                        if upd.rowcount == 0:
+                            await session.execute(sql_text(
+                                "INSERT INTO sync_control (job_name, reference_value, status, updated_at) "
+                                "VALUES (:k, :v, 'running', NOW())"
+                            ), {"k": "sync_catalog_start_offset", "v": str(start)})
                         await session.commit()
                     except Exception as ck_err:
-                        print(f"  [checkpoint] erro ao salvar: {ck_err}")
+                        print(f"  [checkpoint] erro ao salvar (ignorando): {ck_err}")
+                        await session.rollback()  # CRÍTICO: limpa transação corrompida
 
             # Desativa produtos não-moda pelo nome
             print("18. desativando produtos não-moda...")
@@ -242,8 +250,10 @@ async def run() -> None:
                 await session.execute(sql_text(
                     "DELETE FROM sync_control WHERE job_name = 'sync_catalog_start_offset'"
                 ))
-            except Exception:
-                pass
+                await session.commit()
+            except Exception as clear_err:
+                print(f"  [checkpoint] erro ao limpar: {clear_err}")
+                await session.rollback()
 
             await mark_sync_success(
                 session=session,
