@@ -147,8 +147,9 @@ def fetch_product_specifications(product_id: str) -> dict[str, str]:
 
         result = {}
         for spec in specs:
-            name = str(spec.get("FieldName") or "").strip()
-            values = spec.get("FieldValues") or []
+            # VTEX /specification retorna: {"Name": "1- Linha", "Value": ["AGUA"], "Id": 73}
+            name = str(spec.get("Name") or spec.get("FieldName") or "").strip()
+            values = spec.get("Value") or spec.get("FieldValues") or []
             if name and values:
                 result[name.lower()] = str(values[0]).strip()
         return result
@@ -160,28 +161,42 @@ def fetch_product_specifications(product_id: str) -> dict[str, str]:
 # Mapeamento: chave do dict de specs → campo do modelo CatalogProduct
 SPEC_FIELD_MAP = {
     # Cores
-    "cores":             "color",
-    # Estamparia
-    "estamparia":        "print_name",
+    "cores":                "color",
+    # Estamparia (API retorna "1- Estamparia")
+    "estamparia":           "print_name",
+    "1- estamparia":        "print_name",
+    "1-estamparia":         "print_name",
     # Gênero
-    "0- gênero":         "gender",
-    "0- genero":         "gender",
-    "gênero":            "gender",
-    "genero":            "gender",
+    "0- gênero":            "gender",
+    "0- genero":            "gender",
+    "1- gênero":            "gender",
+    "1- genero":            "gender",
+    "gênero":               "gender",
+    "genero":               "gender",
     # Ocasião
-    "ocasião":           "occasion",
-    "ocasiao":           "occasion",
-    # Linha (AGUA/VIDA/LUZ/UNDERWEAR)
-    "0- linha":          "collection",
-    "linha":             "collection",
-    # Tipo de produto
-    "tipo de produto":   "product_type",
-    "1- tipo de produto":"product_type",
-    "0- produto":        "product_type",
-    # Modelo (detalhes de corte/modelo)
-    "0- modelo":         "model",
-    "modelo":            "model",
-    # Departamento (pode vir das specs)
-    "departamento":      "department",
-    "0- departamento":   "department",
+    "ocasião":              "occasion",
+    "ocasiao":              "occasion",
+    "1- ocasião":           "occasion",
+    "1- ocasiao":           "occasion",
+    # Linha (AGUA/VIDA/LUZ/UNDERWEAR) — API retorna "1- Linha"
+    "0- linha":             "collection",
+    "1- linha":             "collection",
+    "linha":                "collection",
+    # Tipo de produto — API retorna "1- Tipo de produto"
+    "tipo de produto":      "product_type",
+    "1- tipo de produto":   "product_type",
+    "0- produto":           "product_type",
+    "1- produto":           "product_type",
+    # Modelo
+    "0- modelo":            "model",
+    "1- modelo":            "model",
+    "modelo":               "model",
+    # Departamento
+    "departamento":         "department",
+    "0- departamento":      "department",
+    "1- departamento":      "department",
+    # Coleção
+    "1- coleção":           "collection",
+    "1- colecao":           "collection",
+    "coleção":              "collection",
 }
