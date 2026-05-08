@@ -260,6 +260,28 @@
         color: #5a4a3a;
         margin: 4px 0 8px;
       }
+      .ml-card-price-de {
+        font-size: 12px;
+        color: #9a8f83;
+        text-decoration: line-through;
+        margin-bottom: 2px;
+      }
+      .ml-card-price-por {
+        font-size: 16px;
+        font-weight: 700;
+        color: #7a4a1a;
+      }
+      .ml-card-sold-out {
+        display: inline-block;
+        font-size: 11px;
+        background: #f5f0e8;
+        color: #9a8f83;
+        border: 1px solid #e0d5c0;
+        border-radius: 20px;
+        padding: 4px 12px;
+        margin: 4px 0 8px;
+        font-style: italic;
+      }
       .ml-look-box {
         margin-bottom: 24px;
         padding-bottom: 16px;
@@ -546,10 +568,22 @@
       : `<img src="${placeholderSvg}" alt="Sem imagem" />`;
 
     const url = item.url || item.link_produto || item.product_url || "#";
-    const rawPrice = item.price || item.preco || 0;
-    const priceHtml = rawPrice > 0
-      ? `<div class="ml-card-price">${Number(rawPrice).toLocaleString("pt-BR", {style:"currency", currency:"BRL"})}</div>`
-      : "";
+    const salePrice  = parseFloat(item.price  || item.preco     || 0);
+    const listPrice  = parseFloat(item.list_price || item.preco_de || 0);
+    const hasDiscount = listPrice > 0 && listPrice > salePrice + 0.01;
+    let priceHtml = "";
+    if (salePrice > 0) {
+      const fmt = v => Number(v).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+      if (hasDiscount) {
+        priceHtml = `
+          <div class="ml-card-price-de">De ${fmt(listPrice)}</div>
+          <div class="ml-card-price-por">Por ${fmt(salePrice)}</div>`;
+      } else {
+        priceHtml = `<div class="ml-card-price">${fmt(salePrice)}</div>`;
+      }
+    } else {
+      priceHtml = `<div class="ml-card-sold-out">✓ Você garantiu essa peça</div>`;
+    }
 
     return `
       <div class="ml-card">
