@@ -375,167 +375,75 @@ async def get_customer_recommendations(
     limit: int = 12,
 ) -> list[dict]:
     """
-    Retorna recomendações de look completo baseadas nas seleções do Personal Stylist.
+    Recomendações de look completo baseadas nas seleções do Personal Stylist.
 
-    Slots de look por ocasião:
-      praia/resort : top (biquíni/sutiã/maiô) + bottom (calcinha) + saída + calçado + acessório
-      jantar/festa : vestido OU blusa+saia/calça + calçado + bolsa + acessório
-      viagem       : camisa/blusa + calça/short + sandália + acessório
-      casual       : blusa/camiseta + calça/short/saia + calçado + acessório
-      (sem seleção): curadoria por harmonia de cor/estampa com o closet
+    Classificação por nome do produto (product_type é NULL no banco):
+      PRAIA/RESORT : biquíni/sutiã/maiô + calcinha + saída/canga + sandália/rasteira + chapéu/bolsa
+      JANTAR/FESTA : vestido/macacão OU blusa+saia/calça + sandália/scarpin + bolsa/clutch + acessório
+      VIAGEM       : blusa/camisa + calça/short + sandália/tênis + bolsa/mochila
+      CASUAL       : blusa/camiseta/top + calça/short/saia + sandália/chinelo + acessório
+      SEM SELEÇÃO  : curadoria por terminação de nome (mesma coleção) + monocromático
+
+    SALE é excluído das recomendações (department = 'Sale') —
+    recomendamos pela coleção/tipo, não pela categoria de liquidação.
     """
-    email     = normalize(email)
-    email_like = email if "%" in email else f"{email}%"
-    limit     = max(1, min(int(limit or 12), 24))
+    email  = normalize(email)
+    limit  = max(1, min(int(limit or 12), 24))
 
-    # ── Mapa de slots por ocasião ─────────────────────────────────────────────
-    OCCASION_SLOTS = {
-        "praia": [
-            {"slot": "top_praia",   "terms": ["biquíni", "biquini", "sutiã", "sutia", "maiô", "maio", "cropped"], "weight": 10},
-            {"slot": "bottom_praia","terms": ["calcinha"], "weight": 10},
-            {"slot": "saida_praia", "terms": ["saída", "saida", "canga", "pareô", "pareo"], "weight": 9},
-            {"slot": "calcado",     "terms": ["sandália", "sandalia", "rasteira", "chinelo"], "weight": 7},
-            {"slot": "acessorio",   "terms": ["chapéu", "chapeu", "viseira", "bolsa", "nécessaire", "necessaire", "colar", "brinco"], "weight": 6},
-        ],
-        "resort": [
-            {"slot": "vestido_resort",  "terms": ["vestido", "macacão", "macacao"], "weight": 10},
-            {"slot": "blusa_resort",    "terms": ["blusa", "camisa", "top", "cropped"], "weight": 8},
-            {"slot": "bottom_resort",   "terms": ["calça", "calca", "saia", "short", "pantalona"], "weight": 8},
-            {"slot": "saida_resort",    "terms": ["saída", "saida", "kimono", "canga"], "weight": 7},
-            {"slot": "calcado",         "terms": ["sandália", "sandalia", "mule", "rasteira"], "weight": 7},
-            {"slot": "acessorio",       "terms": ["bolsa", "chapéu", "chapeu", "colar", "brinco", "pulseira"], "weight": 6},
-        ],
-        "jantar": [
-            {"slot": "vestido_jantar",  "terms": ["vestido", "macacão", "macacao"], "weight": 10},
-            {"slot": "blusa_jantar",    "terms": ["blusa", "camisa", "top", "body"], "weight": 8},
-            {"slot": "bottom_jantar",   "terms": ["saia", "calça", "calca", "pantalona"], "weight": 8},
-            {"slot": "calcado",         "terms": ["sandália", "sandalia", "scarpin", "mule", "tamanco"], "weight": 7},
-            {"slot": "acessorio",       "terms": ["bolsa", "clutch", "colar", "brinco", "pulseira", "anel"], "weight": 6},
-        ],
-        "viagem": [
-            {"slot": "blusa_viagem",    "terms": ["blusa", "camisa", "camiseta", "top"], "weight": 9},
-            {"slot": "bottom_viagem",   "terms": ["calça", "calca", "short", "saia", "bermuda", "pantalona"], "weight": 9},
-            {"slot": "saida_viagem",    "terms": ["saída", "saida", "kimono", "vestido"], "weight": 7},
-            {"slot": "calcado",         "terms": ["sandália", "sandalia", "tênis", "tenis", "rasteira"], "weight": 7},
-            {"slot": "acessorio",       "terms": ["bolsa", "mochila", "chapéu", "chapeu", "colar", "brinco"], "weight": 6},
-        ],
-        "dia_a_dia": [
-            {"slot": "blusa_casual",    "terms": ["blusa", "camiseta", "top", "cropped", "camisa"], "weight": 9},
-            {"slot": "bottom_casual",   "terms": ["calça", "calca", "short", "saia", "bermuda"], "weight": 9},
-            {"slot": "calcado",         "terms": ["sandália", "sandalia", "tênis", "tenis", "rasteira", "chinelo"], "weight": 7},
-            {"slot": "acessorio",       "terms": ["bolsa", "colar", "brinco", "pulseira", "anel"], "weight": 5},
-        ],
+    # ── Classificador de tipo por nome ────────────────────────────────────────
+    def classify(name: str) -> str:
+        n = normalize(name or "")
+        if any(t in n for t in ["biquini","biquíni","sutia","sutiã","maio","maiô","cropped praia"]):
+            return "top_praia"
+        if "calcinha" in n:
+            return "calcinha"
+        if any(t in n for t in ["saida","saída","canga","pareo","pareô","kimono"]):
+            return "saida"
+        if any(t in n for t in ["vestido","macacao","macacão"]):
+            return "vestido"
+        if any(t in n for t in ["blusa","camisa","camiseta","top","cropped","body"]):
+            return "blusa"
+        if any(t in n for t in ["calca","calça","saia","short","bermuda","pantalona"]):
+            return "bottom"
+        if any(t in n for t in ["sandalia","sandália","rasteira","chinelo","mule","scarpin","tamanco","tenis","tênis"]):
+            return "calcado"
+        if any(t in n for t in ["bolsa","clutch","mochila","necessaire","nécessaire"]):
+            return "bolsa"
+        if any(t in n for t in ["chapeu","chapéu","viseira"]):
+            return "chapeu"
+        if any(t in n for t in ["colar","brinco","pulseira","anel","relogio","relógio"]):
+            return "joia"
+        return "outro"
+
+    # ── Slots por ocasião ─────────────────────────────────────────────────────
+    # Ordem = prioridade de exibição no look
+    SLOTS = {
+        "praia":   ["top_praia","calcinha","saida","calcado","chapeu","bolsa","joia"],
+        "resort":  ["vestido","blusa","bottom","saida","calcado","bolsa","chapeu","joia"],
+        "jantar":  ["vestido","blusa","bottom","calcado","bolsa","joia"],
+        "viagem":  ["blusa","bottom","saida","calcado","bolsa","chapeu"],
+        "dia_a_dia":["blusa","bottom","calcado","bolsa","joia"],
     }
 
-    # ── Score adicional por seleção do Personal Stylist ───────────────────────
-    GOAL_BOOST = {
-        "cross_sell": {
-            "terms": ["saída", "saida", "canga", "bolsa", "sandália", "sandalia", "acessório", "chapéu"],
-            "boost": 8,
-            "reason": "Complementa peças que você já tem no closet.",
-        },
-        "up_sell": {
-            "terms": ["vestido", "camisa", "alfaiataria", "linho", "bordado", "resort", "pantalona"],
-            "boost": 8,
-            "reason": "Proposta mais sofisticada para elevar o seu look.",
-        },
-        "novidades": {
-            "terms": [],   # qualquer produto novo vale
-            "boost": 3,
-            "reason": "Novidade da coleção alinhada ao seu estilo.",
-        },
+    # ── Boost score pelas seleções ─────────────────────────────────────────────
+    GOAL_TERMS = {
+        "cross_sell": ["saida","saída","canga","bolsa","sandalia","sandália","chapeu","chapéu","acessorio"],
+        "up_sell":    ["vestido","camisa","linho","alfaiataria","pantalona","resort","bordado"],
+        "novidades":  [],
     }
-
-    STYLE_BOOST = {
-        "elegante": {
-            "terms": ["vestido", "camisa", "alfaiataria", "linho", "macacão", "pantalona"],
-            "boost": 6,
-        },
-        "casual": {
-            "terms": ["camiseta", "short", "blusa", "top", "cropped", "bermuda"],
-            "boost": 6,
-        },
-        "leve": {
-            "terms": ["linho", "saída", "saida", "resort", "canga", "pareô", "pareo", "vestido"],
-            "boost": 6,
-        },
+    STYLE_TERMS = {
+        "elegante": ["vestido","camisa","alfaiataria","linho","macacão","pantalona","saia"],
+        "casual":   ["camiseta","short","blusa","top","cropped","bermuda"],
+        "leve":     ["linho","saida","saída","resort","canga","pareo","vestido"],
     }
 
     async with AsyncSessionLocal() as session:
         profile = await _get_customer_profile(email, session)
-        dominant_gender = profile.get("dominant_gender")
+        dominant_gender = profile.get("dominant_gender", "feminino")
 
-        # ── Busca produtos em estoque ─────────────────────────────────────────
-        # Expande termos de busca incluindo acessórios e calçados
-        ALL_TERMS = [
-            "biquini", "biquíni", "sutia", "sutiã", "calcinha", "maiô", "maio",
-            "vestido", "macacão", "macacao", "short", "saia", "camisa", "blusa",
-            "camiseta", "top", "cropped", "calça", "calca", "pantalona", "pareô", "pareo",
-            "saída", "saida", "body", "kimono",
-            # acessórios e calçados
-            "sandália", "sandalia", "rasteira", "chinelo", "mule", "scarpin", "tamanco",
-            "bolsa", "clutch", "chapéu", "chapeu", "viseira", "nécessaire", "necessaire",
-            "colar", "brinco", "pulseira", "anel", "mochila",
-        ]
-
-        product_query = (
-            select(CatalogProduct)
-            .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
-            .where(
-                CatalogProduct.is_active == 1,
-                CatalogProduct.sku_id.is_not(None),
-                InventoryBySku.quantity > 0,
-                InventoryBySku.is_available == 1,
-                or_(*[
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like(f"%{t}%")
-                    for t in ALL_TERMS
-                ]),
-            )
-            .limit(limit * 8)
-        )
-
-        result = await session.execute(product_query)
-        products = result.scalars().all()
-
-    # ── Filtro de gênero ──────────────────────────────────────────────────────
-    def is_gender_match(name, cat, dept):
-        name_text  = normalize(str(name or ""))
-        dept_clean = normalize(str(dept or "")).replace("sale", "").strip()
-        full_text  = f"{name_text} {dept_clean}"
-        if any(t in full_text for t in ["infantil", "kids", "criança", "crianca", "baby", "bebê", "bebe"]):
-            return False
-        if dominant_gender == "feminino" and "masculino" in full_text and "feminino" not in full_text:
-            return False
-        if dominant_gender == "masculino" and "feminino" in full_text and "masculino" not in full_text:
-            return False
-        return True
-
-    products = [
-        p for p in products
-        if not is_blocked_home_product(p) and is_gender_match(p.name, p.category, p.department)
-    ]
-
-    # ── Cor e estampa dominante do closet ─────────────────────────────────────
+    # ── Nomes e sufixos do closet para personalização ─────────────────────────
     closet_items  = await _get_closet_items(email)
     closet_sku_ids = [i.sku_id for i in closet_items if i.sku_id]
-    dominant_closet_color = ""
-    dominant_closet_print = ""
-    if closet_sku_ids:
-        try:
-            async with AsyncSessionLocal() as s_color:
-                cp_result = await s_color.execute(
-                    select(CatalogProduct.color, CatalogProduct.print_name)
-                    .where(CatalogProduct.sku_id.in_(closet_sku_ids[:20]))
-                )
-                cp_rows = cp_result.fetchall()
-                closet_colors = [normalize(r.color or "") for r in cp_rows if r.color]
-                closet_prints = [normalize(r.print_name or "") for r in cp_rows if r.print_name]
-                dominant_closet_color = max(set(closet_colors), key=closet_colors.count) if closet_colors else ""
-                dominant_closet_print = max(set(closet_prints), key=closet_prints.count) if closet_prints else ""
-        except Exception:
-            pass
-
-    # ── Nomes do closet para personalizar motivos ─────────────────────────────
     closet_names: list[str] = []
     try:
         from models.customer_closet_item import CustomerClosetItem
@@ -543,158 +451,157 @@ async def get_customer_recommendations(
             r2 = await s2.execute(
                 select(CustomerClosetItem.name)
                 .where(CustomerClosetItem.email == email)
-                .limit(20)
+                .limit(30)
             )
             closet_names = [row[0] for row in r2.fetchall() if row[0]]
     except Exception:
         pass
 
+    # Sufixos dominantes do closet (terminações de coleção)
+    closet_suffixes = [extract_name_suffix(n) for n in closet_names if extract_name_suffix(n)]
+
+    # Cor dominante do closet via catalog_products
+    dominant_closet_color = ""
+    if closet_sku_ids:
+        try:
+            async with AsyncSessionLocal() as sc:
+                rc = await sc.execute(
+                    select(CatalogProduct.color)
+                    .where(CatalogProduct.sku_id.in_(closet_sku_ids[:20]))
+                )
+                colors = [normalize(r.color or "") for r in rc.fetchall() if r.color]
+                dominant_closet_color = max(set(colors), key=colors.count) if colors else ""
+        except Exception:
+            pass
+
+    # ── Busca produtos em estoque, excluindo SALE e Infantil/Casa ────────────
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(CatalogProduct)
+            .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
+            .where(
+                CatalogProduct.is_active == 1,
+                CatalogProduct.sku_id.is_not(None),
+                InventoryBySku.quantity > 0,
+                InventoryBySku.is_available == 1,
+                # Exclui SALE — recomenda pela coleção/tipo, não por liquidação
+                ~func.lower(func.coalesce(CatalogProduct.department, "")).like("sale%"),
+                # Exclui Casa e Infantil
+                ~func.lower(func.coalesce(CatalogProduct.department, "")).in_(
+                    ["casa", "infantil", "kit"]
+                ),
+            )
+            .limit(600)
+        )
+        products = result.scalars().all()
+
+    # ── Filtro de gênero ──────────────────────────────────────────────────────
+    def gender_ok(name, dept):
+        n = normalize(f"{name or ''} {(dept or '').replace('Sale','').replace('sale','')}")
+        if any(t in n for t in ["infantil","kids","criança","baby","bebê"]):
+            return False
+        if dominant_gender == "feminino" and "masculino" in n and "feminino" not in n:
+            return False
+        if dominant_gender == "masculino" and "feminino" in n and "masculino" not in n:
+            return False
+        return True
+
+    products = [p for p in products if not is_blocked_home_product(p) and gender_ok(p.name, p.department)]
+
     # ── Scoring ───────────────────────────────────────────────────────────────
-    def score_for_stylist(product: CatalogProduct) -> float:
-        """Pontua o produto pelas seleções do Personal Stylist + harmonia de cor/estampa."""
-        name_text = normalize(" ".join([
-            str(product.name or ""),
-            str(product.product_type or ""),
-            str(product.occasion or ""),
-            str(product.collection or ""),
-            str(product.print_name or ""),
-            str(product.color or ""),
-        ]))
-        score = score_product(
-            product,
-            occasion=occasion,
-            goal=goal,
-            style=style,
-            closet_color=dominant_closet_color,
-            closet_print=dominant_closet_print,
+    occasion_n = normalize(occasion)
+    goal_n     = normalize(goal)
+    style_n    = normalize(style)
+    slots      = SLOTS.get(occasion_n, [])
+
+    def score(p: CatalogProduct) -> float:
+        n   = normalize(p.name or "")
+        s   = 0.0
+        typ = classify(p.name)
+
+        # 1. Match de terminação com closet (+15 — sinal mais forte)
+        sfx = extract_name_suffix(p.name or "")
+        if sfx and any(sfx in cs or cs in sfx for cs in closet_suffixes):
+            s += 15
+
+        # 2. Slot certo para a ocasião (+10)
+        if slots and typ in slots:
+            s += 10
+
+        # 3. Score base de harmonias (cor, estampa, ocasião)
+        s += score_product(
+            p, occasion=occasion, goal=goal, style=style,
+            closet_color=dominant_closet_color, closet_print="",
         )
 
-        # ── Boost por terminação: monocromático ou mesma coleção ──────────────
-        # Prioriza produtos que compartilham a terminação do nome com peças do closet
-        # Ex: se o closet tem "Biquíni Sutiã Coqueiros", recomenda "Sandália Coqueiros"
-        if closet_names:
-            for closet_name in closet_names[:10]:
-                if suffixes_match(product.name or "", closet_name):
-                    score += 12  # match de coleção é o sinal mais forte de look completo
+        # 4. Goal boost (+8)
+        if goal_n in GOAL_TERMS:
+            terms = GOAL_TERMS[goal_n]
+            if not terms or any(t in n for t in terms):
+                s += 8
+
+        # 5. Style boost (+6)
+        if style_n in STYLE_TERMS:
+            if any(t in n for t in STYLE_TERMS[style_n]):
+                s += 6
+
+        # 6. Cor monocromática (+4)
+        if dominant_closet_color and p.color and normalize(p.color) == dominant_closet_color:
+            s += 4
+
+        return s
+
+    scored = sorted([(score(p), p) for p in products], key=lambda x: x[0], reverse=True)
+
+    # ── Monta look por slots quando há seleção de ocasião ─────────────────────
+    if slots and occasion_n:
+        used: set[str] = set()
+        look: list[dict] = []
+
+        for slot_type in slots:
+            for sc, p in scored:
+                pid = p.product_id or p.sku_id or ""
+                if pid in used:
+                    continue
+                if classify(p.name) == slot_type:
+                    used.add(pid)
+                    fmt = _format_product(p, sc, occasion, goal, style, closet_names)
+                    fmt["slot"] = slot_type
+                    fmt["slot_label"] = _slot_label(slot_type)
+                    look.append(fmt)
                     break
 
-        # Boost monocromático: mesma cor que o closet dominante
-        if dominant_closet_color and product.color:
-            if normalize(product.color) == dominant_closet_color:
-                score += 5  # monocromático = look coeso
-
-        # Boost pelas seleções do Personal Stylist
-        occasion_n = normalize(occasion)
-        slots = OCCASION_SLOTS.get(occasion_n, [])
-        for slot_def in slots:
-            if any(t in name_text for t in slot_def["terms"]):
-                score += slot_def["weight"]
-                break  # cada produto pega o boost do primeiro slot que bate
-
-        if goal and goal in GOAL_BOOST:
-            gdef = GOAL_BOOST[goal]
-            if not gdef["terms"] or any(t in name_text for t in gdef["terms"]):
-                score += gdef["boost"]
-
-        if style and style in STYLE_BOOST:
-            sdef = STYLE_BOOST[style]
-            if any(t in name_text for t in sdef["terms"]):
-                score += sdef["boost"]
-
-        return score
-
-    scored = sorted(
-        [(score_for_stylist(p), p) for p in products],
-        key=lambda x: x[0],
-        reverse=True,
-    )
-
-    # ── Monta look completo com slots ─────────────────────────────────────────
-    occasion_n = normalize(occasion)
-    slots_def  = OCCASION_SLOTS.get(occasion_n, [])
-
-    if slots_def and (occasion or goal or style):
-        # Monta look preenchendo cada slot com o melhor produto disponível
-        used_product_ids: set[str] = set()
-        look_items: list[dict] = []
-
-        for slot_def in slots_def:
-            # Encontra o melhor produto para este slot que ainda não foi usado
-            for score, product in scored:
-                pid = product.product_id or product.sku_id or ""
-                if pid in used_product_ids:
-                    continue
-                name_text = normalize(product.name or "")
-                if any(t in name_text for t in slot_def["terms"]):
-                    used_product_ids.add(pid)
-                    formatted = _format_product(
-                        product=product,
-                        score=score,
-                        occasion=occasion,
-                        goal=goal,
-                        style=style,
-                        closet_pieces=closet_names,
-                    )
-                    formatted["slot"] = slot_def["slot"]
-                    formatted["slot_label"] = _slot_label(slot_def["slot"])
-                    look_items.append(formatted)
-                    break  # um produto por slot
-
-        # Complementa com produtos de alto score até atingir o limit
-        for score, product in scored:
-            if len(look_items) >= limit:
+        # Completa com melhores scores até o limit
+        for sc, p in scored:
+            if len(look) >= limit:
                 break
-            pid = product.product_id or product.sku_id or ""
-            if pid in used_product_ids:
-                continue
-            used_product_ids.add(pid)
-            look_items.append(_format_product(
-                product=product,
-                score=score,
-                occasion=occasion,
-                goal=goal,
-                style=style,
-                closet_pieces=closet_names,
-            ))
+            pid = p.product_id or p.sku_id or ""
+            if pid not in used:
+                used.add(pid)
+                look.append(_format_product(p, sc, occasion, goal, style, closet_names))
 
-        return look_items
+        return look
 
-    # ── Sem seleção: lista plana por harmonia de cor/estampa ──────────────────
+    # ── Sem seleção: lista por terminação + harmonia ──────────────────────────
     return [
-        _format_product(
-            product=product,
-            score=score,
-            occasion=occasion,
-            goal=goal,
-            style=style,
-            closet_pieces=closet_names,
-        )
-        for score, product in scored[:limit]
+        _format_product(p, sc, occasion, goal, style, closet_names)
+        for sc, p in scored[:limit]
     ]
 
 
 def _slot_label(slot: str) -> str:
-    """Rótulo legível para o slot do look."""
-    labels = {
-        "top_praia":    "Top / Biquíni",
-        "bottom_praia": "Calcinha",
-        "saida_praia":  "Saída de Praia",
-        "vestido_resort": "Vestido / Macacão",
-        "blusa_resort": "Blusa / Camisa",
-        "bottom_resort":"Calça / Saia",
-        "saida_resort": "Saída / Kimono",
-        "vestido_jantar":"Vestido / Macacão",
-        "blusa_jantar":  "Blusa / Top",
-        "bottom_jantar": "Saia / Calça",
-        "blusa_viagem":  "Blusa / Camisa",
-        "bottom_viagem": "Calça / Short",
-        "saida_viagem":  "Saída / Vestido",
-        "blusa_casual":  "Blusa / Camiseta",
-        "bottom_casual": "Calça / Short / Saia",
-        "calcado":       "Calçado",
-        "acessorio":     "Acessório",
-    }
-    return labels.get(slot, slot.replace("_", " ").title())
+    return {
+        "top_praia": "Top / Biquíni / Maiô",
+        "calcinha":  "Calcinha",
+        "saida":     "Saída de Praia",
+        "vestido":   "Vestido / Macacão",
+        "blusa":     "Blusa / Camisa",
+        "bottom":    "Calça / Saia / Short",
+        "calcado":   "Calçado",
+        "bolsa":     "Bolsa",
+        "chapeu":    "Chapéu / Viseira",
+        "joia":      "Acessório",
+    }.get(slot, slot)
 
 
 async def _get_closet_items(email: str):
