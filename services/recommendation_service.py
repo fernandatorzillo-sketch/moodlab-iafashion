@@ -408,11 +408,25 @@ async def get_customer_recommendations(
         if is_fashion_product(p) and is_gender_match(p.name, p.category, p.department)
     ]
 
-    # Obtém cor e estampa dominante do closet para harmonia
-    closet_colors = [normalize(i.color or "") for i in await _get_closet_items(email)]
-    closet_prints = [normalize(i.print_name or "") for i in await _get_closet_items(email)]
-    dominant_closet_color = max(set(closet_colors), key=closet_colors.count) if closet_colors else ""
-    dominant_closet_print = max(set(closet_prints), key=closet_prints.count) if closet_prints else ""
+    # Obtém cor e estampa dominante do closet via catalog_products (CustomerClosetItem não tem color/print_name)
+    closet_items = await _get_closet_items(email)
+    closet_sku_ids = [i.sku_id for i in closet_items if i.sku_id]
+    dominant_closet_color = ""
+    dominant_closet_print = ""
+    if closet_sku_ids:
+        try:
+            async with AsyncSessionLocal() as s_color:
+                cp_result = await s_color.execute(
+                    select(CatalogProduct.color, CatalogProduct.print_name)
+                    .where(CatalogProduct.sku_id.in_(closet_sku_ids[:20]))
+                )
+                cp_rows = cp_result.fetchall()
+                closet_colors = [normalize(r.color or "") for r in cp_rows if r.color]
+                closet_prints = [normalize(r.print_name or "") for r in cp_rows if r.print_name]
+                dominant_closet_color = max(set(closet_colors), key=closet_colors.count) if closet_colors else ""
+                dominant_closet_print = max(set(closet_prints), key=closet_prints.count) if closet_prints else ""
+        except Exception:
+            pass
 
     scored = [
         (score_product(
