@@ -162,6 +162,44 @@ def prints_harmonize(print1: str, print2: str) -> bool:
     return True  # estampado + liso = OK
 
 
+def extract_name_suffix(name: str) -> str:
+    """
+    Extrai a 'terminação' do nome do produto — geralmente o nome da coleção/estampa.
+    Ex: "Biquíni Sutiã Faixa Bananeira"  → "bananeira"
+        "Maiô Engana Mamãe Amalfi"       → "amalfi"
+        "Sandália Coqueiros"             → "coqueiros"
+        "Vestido Longo Floresta Ilustrada Localizada" → "floresta ilustrada localizada"
+
+    Estratégia: remove os termos de tipo de produto e pega o que sobra.
+    """
+    TYPE_WORDS = [
+        "biquíni", "biquini", "sutiã", "sutia", "calcinha", "maiô", "maio",
+        "vestido", "macacão", "macacao", "blusa", "camisa", "camiseta", "top",
+        "cropped", "body", "saia", "short", "calça", "calca", "pantalona",
+        "saída", "saida", "canga", "pareô", "pareo", "kimono",
+        "sandália", "sandalia", "rasteira", "chinelo", "mule", "scarpin",
+        "bolsa", "clutch", "chapéu", "chapeu", "viseira", "colar", "brinco",
+        "pulseira", "anel", "necessaire", "nécessaire", "mochila",
+        "faixa", "alça", "cortininha", "engana", "mamãe", "mama", "longo",
+        "curto", "midi", "mini", "franzida", "franzido", "lacinho", "com",
+        "de", "e", "a", "o", "ao", "da", "do", "na", "no", "para", "sem",
+        "uma", "um", "as", "os",
+    ]
+    words = normalize(name).split()
+    suffix_words = [w for w in words if w not in TYPE_WORDS and len(w) > 2]
+    return " ".join(suffix_words[-3:]) if suffix_words else ""  # últimas 3 palavras relevantes
+
+
+def suffixes_match(name1: str, name2: str) -> bool:
+    """Retorna True se os dois produtos têm a mesma terminação (mesma coleção/estampa)."""
+    s1 = extract_name_suffix(name1)
+    s2 = extract_name_suffix(name2)
+    if not s1 or not s2:
+        return False
+    # Match exato ou um contém o outro (ex: "coqueiros" em "biquini coqueiros")
+    return s1 == s2 or s1 in s2 or s2 in s1
+
+
 def score_product(
     product: CatalogProduct,
     occasion: str = "",
@@ -283,19 +321,26 @@ def build_reason(
     closet_match = None
     if closet_pieces:
         name_lower = product_name.lower()
+
+        # Prioridade 1: match por terminação (mesma coleção/estampa)
         for piece in closet_pieces:
-            piece_lower = piece.lower()
-            for ptype, complements in TYPE_COMPLEMENTS.items():
-                if ptype in name_lower and any(c in piece_lower for c in complements):
-                    closet_match = piece.split(" ")[:4]  # primeiras 4 palavras
-                    closet_match = " ".join(closet_match)
-                    break
-                if ptype in piece_lower and any(c in name_lower for c in complements):
-                    closet_match = piece.split(" ")[:4]
-                    closet_match = " ".join(closet_match)
-                    break
-            if closet_match:
+            if suffixes_match(product_name, piece):
+                closet_match = " ".join(piece.split()[:4])
                 break
+
+        # Prioridade 2: match por tipo complementar
+        if not closet_match:
+            for piece in closet_pieces:
+                piece_lower = piece.lower()
+                for ptype, complements in TYPE_COMPLEMENTS.items():
+                    if ptype in name_lower and any(c in piece_lower for c in complements):
+                        closet_match = " ".join(piece.split()[:4])
+                        break
+                    if ptype in piece_lower and any(c in name_lower for c in complements):
+                        closet_match = " ".join(piece.split()[:4])
+                        break
+                if closet_match:
+                    break
 
     if goal == "cross_sell":
         if closet_match:
@@ -329,50 +374,109 @@ async def get_customer_recommendations(
     style: str = "",
     limit: int = 12,
 ) -> list[dict]:
-    email = normalize(email)
+    """
+    Retorna recomendações de look completo baseadas nas seleções do Personal Stylist.
+
+    Slots de look por ocasião:
+      praia/resort : top (biquíni/sutiã/maiô) + bottom (calcinha) + saída + calçado + acessório
+      jantar/festa : vestido OU blusa+saia/calça + calçado + bolsa + acessório
+      viagem       : camisa/blusa + calça/short + sandália + acessório
+      casual       : blusa/camiseta + calça/short/saia + calçado + acessório
+      (sem seleção): curadoria por harmonia de cor/estampa com o closet
+    """
+    email     = normalize(email)
     email_like = email if "%" in email else f"{email}%"
-    limit = max(1, min(int(limit or 12), 24))
+    limit     = max(1, min(int(limit or 12), 24))
+
+    # ── Mapa de slots por ocasião ─────────────────────────────────────────────
+    OCCASION_SLOTS = {
+        "praia": [
+            {"slot": "top_praia",   "terms": ["biquíni", "biquini", "sutiã", "sutia", "maiô", "maio", "cropped"], "weight": 10},
+            {"slot": "bottom_praia","terms": ["calcinha"], "weight": 10},
+            {"slot": "saida_praia", "terms": ["saída", "saida", "canga", "pareô", "pareo"], "weight": 9},
+            {"slot": "calcado",     "terms": ["sandália", "sandalia", "rasteira", "chinelo"], "weight": 7},
+            {"slot": "acessorio",   "terms": ["chapéu", "chapeu", "viseira", "bolsa", "nécessaire", "necessaire", "colar", "brinco"], "weight": 6},
+        ],
+        "resort": [
+            {"slot": "vestido_resort",  "terms": ["vestido", "macacão", "macacao"], "weight": 10},
+            {"slot": "blusa_resort",    "terms": ["blusa", "camisa", "top", "cropped"], "weight": 8},
+            {"slot": "bottom_resort",   "terms": ["calça", "calca", "saia", "short", "pantalona"], "weight": 8},
+            {"slot": "saida_resort",    "terms": ["saída", "saida", "kimono", "canga"], "weight": 7},
+            {"slot": "calcado",         "terms": ["sandália", "sandalia", "mule", "rasteira"], "weight": 7},
+            {"slot": "acessorio",       "terms": ["bolsa", "chapéu", "chapeu", "colar", "brinco", "pulseira"], "weight": 6},
+        ],
+        "jantar": [
+            {"slot": "vestido_jantar",  "terms": ["vestido", "macacão", "macacao"], "weight": 10},
+            {"slot": "blusa_jantar",    "terms": ["blusa", "camisa", "top", "body"], "weight": 8},
+            {"slot": "bottom_jantar",   "terms": ["saia", "calça", "calca", "pantalona"], "weight": 8},
+            {"slot": "calcado",         "terms": ["sandália", "sandalia", "scarpin", "mule", "tamanco"], "weight": 7},
+            {"slot": "acessorio",       "terms": ["bolsa", "clutch", "colar", "brinco", "pulseira", "anel"], "weight": 6},
+        ],
+        "viagem": [
+            {"slot": "blusa_viagem",    "terms": ["blusa", "camisa", "camiseta", "top"], "weight": 9},
+            {"slot": "bottom_viagem",   "terms": ["calça", "calca", "short", "saia", "bermuda", "pantalona"], "weight": 9},
+            {"slot": "saida_viagem",    "terms": ["saída", "saida", "kimono", "vestido"], "weight": 7},
+            {"slot": "calcado",         "terms": ["sandália", "sandalia", "tênis", "tenis", "rasteira"], "weight": 7},
+            {"slot": "acessorio",       "terms": ["bolsa", "mochila", "chapéu", "chapeu", "colar", "brinco"], "weight": 6},
+        ],
+        "dia_a_dia": [
+            {"slot": "blusa_casual",    "terms": ["blusa", "camiseta", "top", "cropped", "camisa"], "weight": 9},
+            {"slot": "bottom_casual",   "terms": ["calça", "calca", "short", "saia", "bermuda"], "weight": 9},
+            {"slot": "calcado",         "terms": ["sandália", "sandalia", "tênis", "tenis", "rasteira", "chinelo"], "weight": 7},
+            {"slot": "acessorio",       "terms": ["bolsa", "colar", "brinco", "pulseira", "anel"], "weight": 5},
+        ],
+    }
+
+    # ── Score adicional por seleção do Personal Stylist ───────────────────────
+    GOAL_BOOST = {
+        "cross_sell": {
+            "terms": ["saída", "saida", "canga", "bolsa", "sandália", "sandalia", "acessório", "chapéu"],
+            "boost": 8,
+            "reason": "Complementa peças que você já tem no closet.",
+        },
+        "up_sell": {
+            "terms": ["vestido", "camisa", "alfaiataria", "linho", "bordado", "resort", "pantalona"],
+            "boost": 8,
+            "reason": "Proposta mais sofisticada para elevar o seu look.",
+        },
+        "novidades": {
+            "terms": [],   # qualquer produto novo vale
+            "boost": 3,
+            "reason": "Novidade da coleção alinhada ao seu estilo.",
+        },
+    }
+
+    STYLE_BOOST = {
+        "elegante": {
+            "terms": ["vestido", "camisa", "alfaiataria", "linho", "macacão", "pantalona"],
+            "boost": 6,
+        },
+        "casual": {
+            "terms": ["camiseta", "short", "blusa", "top", "cropped", "bermuda"],
+            "boost": 6,
+        },
+        "leve": {
+            "terms": ["linho", "saída", "saida", "resort", "canga", "pareô", "pareo", "vestido"],
+            "boost": 6,
+        },
+    }
 
     async with AsyncSessionLocal() as session:
-        # Infere perfil do cliente (gênero, tipos já comprados) para filtrar recs
         profile = await _get_customer_profile(email, session)
         dominant_gender = profile.get("dominant_gender")
 
-        saved_result = await session.execute(
-            select(CustomerRecommendation)
-            .where(CustomerRecommendation.email.ilike(email_like))
-            .order_by(CustomerRecommendation.score.desc().nullslast())
-            .limit(limit * 3)
-        )
-
-        saved_items = saved_result.scalars().all()
-
-        def is_gender_match(item_name, item_cat, item_dept):
-            """Verifica gênero pelo nome do produto — ignora department (ex: 'SALE FEMININO')
-            para não limitar recomendações pelo canal de venda onde foi comprado."""
-            # Usa só o nome para detectar gênero — department como 'SALE FEMININO' não é atributo do produto
-            name_text = normalize(str(item_name or ""))
-            dept_text = normalize(str(item_dept or ""))
-            # Remove o prefixo 'sale' antes de checar gênero no department
-            dept_clean = dept_text.replace("sale", "").strip()
-            full_text = f"{name_text} {dept_clean}"
-            if "infantil" in full_text or "kids" in full_text or "criança" in full_text:
-                return False
-            if dominant_gender == "feminino" and "masculino" in full_text and "feminino" not in full_text:
-                return False
-            if dominant_gender == "masculino" and "feminino" in full_text and "masculino" not in full_text:
-                return False
-            return True
-
-        saved_fashion = [
-            _format_saved(item)
-            for item in saved_items
-            if not _is_blocked_payload(item.name, item.category, item.department)
-            and is_gender_match(item.name, item.category, item.department)
+        # ── Busca produtos em estoque ─────────────────────────────────────────
+        # Expande termos de busca incluindo acessórios e calçados
+        ALL_TERMS = [
+            "biquini", "biquíni", "sutia", "sutiã", "calcinha", "maiô", "maio",
+            "vestido", "macacão", "macacao", "short", "saia", "camisa", "blusa",
+            "camiseta", "top", "cropped", "calça", "calca", "pantalona", "pareô", "pareo",
+            "saída", "saida", "body", "kimono",
+            # acessórios e calçados
+            "sandália", "sandalia", "rasteira", "chinelo", "mule", "scarpin", "tamanco",
+            "bolsa", "clutch", "chapéu", "chapeu", "viseira", "nécessaire", "necessaire",
+            "colar", "brinco", "pulseira", "anel", "mochila",
         ]
-
-        if saved_fashion and not (occasion or goal):
-            return saved_fashion[:limit]
 
         product_query = (
             select(CatalogProduct)
@@ -382,45 +486,37 @@ async def get_customer_recommendations(
                 CatalogProduct.sku_id.is_not(None),
                 InventoryBySku.quantity > 0,
                 InventoryBySku.is_available == 1,
-                or_(
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%biquini%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%biquíni%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%sutia%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%sutiã%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%calcinha%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%maiô%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%maio%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%vestido%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%short%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%saia%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%camisa%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%blusa%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%camiseta%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%top%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%cropped%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%calça%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%calca%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%pantalona%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%pareô%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%pareo%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%saída%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%saida%"),
-                    func.lower(func.coalesce(CatalogProduct.name, "")).like("%body%"),
-                ),
+                or_(*[
+                    func.lower(func.coalesce(CatalogProduct.name, "")).like(f"%{t}%")
+                    for t in ALL_TERMS
+                ]),
             )
-            .limit(limit * 5)
+            .limit(limit * 8)
         )
 
         result = await session.execute(product_query)
         products = result.scalars().all()
 
+    # ── Filtro de gênero ──────────────────────────────────────────────────────
+    def is_gender_match(name, cat, dept):
+        name_text  = normalize(str(name or ""))
+        dept_clean = normalize(str(dept or "")).replace("sale", "").strip()
+        full_text  = f"{name_text} {dept_clean}"
+        if any(t in full_text for t in ["infantil", "kids", "criança", "crianca", "baby", "bebê", "bebe"]):
+            return False
+        if dominant_gender == "feminino" and "masculino" in full_text and "feminino" not in full_text:
+            return False
+        if dominant_gender == "masculino" and "feminino" in full_text and "masculino" not in full_text:
+            return False
+        return True
+
     products = [
         p for p in products
-        if is_fashion_product(p) and is_gender_match(p.name, p.category, p.department)
+        if not is_blocked_home_product(p) and is_gender_match(p.name, p.category, p.department)
     ]
 
-    # Obtém cor e estampa dominante do closet via catalog_products (CustomerClosetItem não tem color/print_name)
-    closet_items = await _get_closet_items(email)
+    # ── Cor e estampa dominante do closet ─────────────────────────────────────
+    closet_items  = await _get_closet_items(email)
     closet_sku_ids = [i.sku_id for i in closet_items if i.sku_id]
     dominant_closet_color = ""
     dominant_closet_print = ""
@@ -439,18 +535,8 @@ async def get_customer_recommendations(
         except Exception:
             pass
 
-    scored = [
-        (score_product(
-            product, occasion=occasion, goal=goal, style=style,
-            closet_color=dominant_closet_color, closet_print=dominant_closet_print
-        ), product)
-        for product in products
-    ]
-
-    scored.sort(key=lambda item: item[0], reverse=True)
-
-    # Pega nomes do closet para personalizar os motivos
-    closet_names = []
+    # ── Nomes do closet para personalizar motivos ─────────────────────────────
+    closet_names: list[str] = []
     try:
         from models.customer_closet_item import CustomerClosetItem
         async with AsyncSessionLocal() as s2:
@@ -463,6 +549,117 @@ async def get_customer_recommendations(
     except Exception:
         pass
 
+    # ── Scoring ───────────────────────────────────────────────────────────────
+    def score_for_stylist(product: CatalogProduct) -> float:
+        """Pontua o produto pelas seleções do Personal Stylist + harmonia de cor/estampa."""
+        name_text = normalize(" ".join([
+            str(product.name or ""),
+            str(product.product_type or ""),
+            str(product.occasion or ""),
+            str(product.collection or ""),
+            str(product.print_name or ""),
+            str(product.color or ""),
+        ]))
+        score = score_product(
+            product,
+            occasion=occasion,
+            goal=goal,
+            style=style,
+            closet_color=dominant_closet_color,
+            closet_print=dominant_closet_print,
+        )
+
+        # ── Boost por terminação: monocromático ou mesma coleção ──────────────
+        # Prioriza produtos que compartilham a terminação do nome com peças do closet
+        # Ex: se o closet tem "Biquíni Sutiã Coqueiros", recomenda "Sandália Coqueiros"
+        if closet_names:
+            for closet_name in closet_names[:10]:
+                if suffixes_match(product.name or "", closet_name):
+                    score += 12  # match de coleção é o sinal mais forte de look completo
+                    break
+
+        # Boost monocromático: mesma cor que o closet dominante
+        if dominant_closet_color and product.color:
+            if normalize(product.color) == dominant_closet_color:
+                score += 5  # monocromático = look coeso
+
+        # Boost pelas seleções do Personal Stylist
+        occasion_n = normalize(occasion)
+        slots = OCCASION_SLOTS.get(occasion_n, [])
+        for slot_def in slots:
+            if any(t in name_text for t in slot_def["terms"]):
+                score += slot_def["weight"]
+                break  # cada produto pega o boost do primeiro slot que bate
+
+        if goal and goal in GOAL_BOOST:
+            gdef = GOAL_BOOST[goal]
+            if not gdef["terms"] or any(t in name_text for t in gdef["terms"]):
+                score += gdef["boost"]
+
+        if style and style in STYLE_BOOST:
+            sdef = STYLE_BOOST[style]
+            if any(t in name_text for t in sdef["terms"]):
+                score += sdef["boost"]
+
+        return score
+
+    scored = sorted(
+        [(score_for_stylist(p), p) for p in products],
+        key=lambda x: x[0],
+        reverse=True,
+    )
+
+    # ── Monta look completo com slots ─────────────────────────────────────────
+    occasion_n = normalize(occasion)
+    slots_def  = OCCASION_SLOTS.get(occasion_n, [])
+
+    if slots_def and (occasion or goal or style):
+        # Monta look preenchendo cada slot com o melhor produto disponível
+        used_product_ids: set[str] = set()
+        look_items: list[dict] = []
+
+        for slot_def in slots_def:
+            # Encontra o melhor produto para este slot que ainda não foi usado
+            for score, product in scored:
+                pid = product.product_id or product.sku_id or ""
+                if pid in used_product_ids:
+                    continue
+                name_text = normalize(product.name or "")
+                if any(t in name_text for t in slot_def["terms"]):
+                    used_product_ids.add(pid)
+                    formatted = _format_product(
+                        product=product,
+                        score=score,
+                        occasion=occasion,
+                        goal=goal,
+                        style=style,
+                        closet_pieces=closet_names,
+                    )
+                    formatted["slot"] = slot_def["slot"]
+                    formatted["slot_label"] = _slot_label(slot_def["slot"])
+                    look_items.append(formatted)
+                    break  # um produto por slot
+
+        # Complementa com produtos de alto score até atingir o limit
+        for score, product in scored:
+            if len(look_items) >= limit:
+                break
+            pid = product.product_id or product.sku_id or ""
+            if pid in used_product_ids:
+                continue
+            used_product_ids.add(pid)
+            look_items.append(_format_product(
+                product=product,
+                score=score,
+                occasion=occasion,
+                goal=goal,
+                style=style,
+                closet_pieces=closet_names,
+            ))
+
+        return look_items
+
+    # ── Sem seleção: lista plana por harmonia de cor/estampa ──────────────────
     return [
         _format_product(
             product=product,
@@ -474,6 +671,30 @@ async def get_customer_recommendations(
         )
         for score, product in scored[:limit]
     ]
+
+
+def _slot_label(slot: str) -> str:
+    """Rótulo legível para o slot do look."""
+    labels = {
+        "top_praia":    "Top / Biquíni",
+        "bottom_praia": "Calcinha",
+        "saida_praia":  "Saída de Praia",
+        "vestido_resort": "Vestido / Macacão",
+        "blusa_resort": "Blusa / Camisa",
+        "bottom_resort":"Calça / Saia",
+        "saida_resort": "Saída / Kimono",
+        "vestido_jantar":"Vestido / Macacão",
+        "blusa_jantar":  "Blusa / Top",
+        "bottom_jantar": "Saia / Calça",
+        "blusa_viagem":  "Blusa / Camisa",
+        "bottom_viagem": "Calça / Short",
+        "saida_viagem":  "Saída / Vestido",
+        "blusa_casual":  "Blusa / Camiseta",
+        "bottom_casual": "Calça / Short / Saia",
+        "calcado":       "Calçado",
+        "acessorio":     "Acessório",
+    }
+    return labels.get(slot, slot.replace("_", " ").title())
 
 
 async def _get_closet_items(email: str):
