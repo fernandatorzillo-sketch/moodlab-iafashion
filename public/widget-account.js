@@ -1,5 +1,9 @@
 (function () {
   const CONFIG = {
+    // CORRIGIDO: substitua pela URL real do seu backend no Render.
+    // Você também pode injetar via VTEX CMS assim:
+    //   <script>window.MOODLAB_CLOSET_CONFIG = { API_BASE: "https://seu-backend.onrender.com" };</script>
+    // colocado ANTES deste script na página.
     API_BASE:
       (window.MOODLAB_CLOSET_CONFIG && window.MOODLAB_CLOSET_CONFIG.API_BASE) ||
       "https://closet-moodlab.onrender.com",
@@ -564,7 +568,6 @@
     `;
   }
 
-
   function buildClosetSection(closet) {
     const items = Array.isArray(closet) ? closet : [];
     const categories = ["Todos"].concat(
@@ -608,7 +611,6 @@
     `;
   }
 
-  // Agrupa peças por tipo (ex: "maio", "biquini", "saida", "vestido")
   function classifyPiece(item) {
     const name = (item.name || item.nome || "").toLowerCase();
     const cat  = (item.category || item.categoria || "").toLowerCase();
@@ -632,13 +634,11 @@
     const pieces = Array.isArray(closet) ? closet.filter(withImg) : [];
     const recs   = Array.isArray(recommendations) ? recommendations.filter(withImg) : [];
 
-    // Marca fonte para mostrar "do seu closet" vs "sugestão"
     const all = [
       ...pieces.map(i => ({...i, _source: "closet", _type: classifyPiece(i)})),
       ...recs.map(i   => ({...i, _source: "rec",    _type: classifyPiece(i)})),
     ];
 
-    // Receitas de look: lista de tipos que fazem sentido juntos
     const RECIPES = [
       {
         title: "Look Praia",
@@ -658,14 +658,12 @@
       const usedIds = new Set();
       const lookItems = [];
 
-      // Tenta preencher cada grupo required (pega 1 do closet ou 1 sugestão)
       for (const group of recipe.required) {
         const candidate = all.find(i =>
           group.includes(i._type) && !usedIds.has(i.sku_id || i.name)
         );
         if (candidate) {
           usedIds.add(candidate.sku_id || candidate.name);
-          // Adiciona nota se é sugestão
           if (candidate._source === "rec") {
             candidate._label = "Sugestão para complementar";
           }
@@ -673,7 +671,6 @@
         }
       }
 
-      // Adiciona opcionais até 4 peças
       for (const optType of recipe.optional) {
         if (lookItems.length >= 4) break;
         const opt = all.find(i =>
@@ -686,7 +683,6 @@
         }
       }
 
-      // Só monta look se tem pelo menos 2 peças de tipos DIFERENTES
       const types = new Set(lookItems.map(i => i._type));
       if (lookItems.length >= 2 && types.size >= 2) {
         looks.push({title: recipe.title, items: lookItems});
@@ -859,7 +855,6 @@
         group.querySelectorAll(".ml-option-btn").forEach(b => b.classList.remove("selected"));
         btn.classList.add("selected");
         answers[group.dataset.field] = btn.dataset.value;
-        // Enable submit when all 3 questions answered
         const submitBtn = form.querySelector(".ml-shopper-submit");
         if (Object.keys(answers).length >= 3) submitBtn.removeAttribute("disabled");
       });
@@ -869,7 +864,7 @@
       e.preventDefault();
       const resultEl = root.querySelector("#ml-shopper-result");
       resultEl.style.display = "block";
-      resultEl.innerHTML = `<div class="ml-loading"><div class="ml-spinner"></div><p>Montando seu look personalizado…</p></div>`;
+      resultEl.innerHTML = `<div class="ml-loading"><p>Montando seu look personalizado…</p></div>`;
 
       try {
         const resp = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/recommendations`, {

@@ -23,8 +23,11 @@ def normalize_database_url(raw_url: str | None) -> str:
     return url
 
 
+# CORREÇÃO: usa apenas DATABASE_URL — igual ao resto do projeto.
+# CLOSET_DATABASE_URL foi removida. Apague essa variável do painel do Render
+# se ela existir, para evitar confusão.
 DATABASE_URL = normalize_database_url(
-    os.getenv("CLOSET_DATABASE_URL") or os.getenv("DATABASE_URL")
+    os.getenv("DATABASE_URL")
 )
 
 engine_kwargs = {"echo": False}

@@ -1,8 +1,12 @@
 (function () {
   const CONFIG = {
+    // CORRIGIDO: substitua pela URL real do seu backend no Render.
+    // Você também pode injetar via VTEX CMS assim:
+    //   <script>window.MOODLAB_CLOSET_CONFIG = { API_BASE: "https://seu-backend.onrender.com" };</script>
+    // colocado ANTES deste script na página.
     API_BASE:
       (window.MOODLAB_CLOSET_CONFIG && window.MOODLAB_CLOSET_CONFIG.API_BASE) ||
-      "https://SEU-DOMINIO-API.com",
+      "https://closet-moodlab.onrender.com",
   };
 
   async function getLoggedEmail() {
