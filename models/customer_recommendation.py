@@ -20,6 +20,9 @@ class CustomerRecommendation(Base):
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Preço de venda (em R$)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 

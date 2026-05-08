@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text
+from sqlalchemy import DateTime, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.base import Base
@@ -24,6 +24,9 @@ class CatalogProduct(Base):
     size: Mapped[str | None] = mapped_column(String(120), nullable=True)
     gender: Mapped[str | None] = mapped_column(String(120), nullable=True)
     collection: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Preço de venda (bestPriceWithTax / sellingPrice da VTEX, em R$)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_url: Mapped[str | None] = mapped_column(Text, nullable=True)

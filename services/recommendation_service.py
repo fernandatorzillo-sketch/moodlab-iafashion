@@ -518,8 +518,34 @@ async def _get_customer_profile(email: str, session) -> dict:
     }
 
 
+def _extract_price_from_raw(raw_json: dict | None) -> float | None:
+    """Extrai o melhor preço disponível do raw_json VTEX."""
+    if not raw_json:
+        return None
+    try:
+        # sellers[0].commertialOffer.Price (formato SKU detail VTEX)
+        sellers = raw_json.get("sellers") or []
+        if sellers:
+            offer = sellers[0].get("commertialOffer") or {}
+            for key in ("Price", "bestPrice", "bestPriceWithTax"):
+                val = offer.get(key)
+                if val and float(val) > 0:
+                    fval = float(val)
+                    return fval / 100 if fval > 1000 else fval
+        # Fallback: campos no nível raiz
+        for key in ("bestPriceWithTax", "bestPrice", "Price", "price", "sellingPrice"):
+            val = raw_json.get(key)
+            if val and float(val) > 0:
+                fval = float(val)
+                return fval / 100 if fval > 1000 else fval
+    except Exception:
+        pass
+    return None
+
+
 def _format_saved(item: CustomerRecommendation) -> dict:
     url = clean_url(item.product_url)
+    price = float(item.price) if getattr(item, "price", None) else None
 
     return {
         "sku_id": item.sku_id,
@@ -531,6 +557,8 @@ def _format_saved(item: CustomerRecommendation) -> dict:
         "categoria": item.category,
         "department": item.department,
         "departamento": item.department,
+        "price": price,
+        "preco": price,
         "image_url": item.image_url or "",
         "imagem_url": item.image_url or "",
         "product_url": url,
@@ -552,8 +580,12 @@ def _format_product(
     closet_pieces: list[str] | None = None,
 ) -> dict:
     url = clean_url(product.product_url)
-
     reason = build_reason(product, occasion=occasion, goal=goal, style=style, closet_pieces=closet_pieces)
+
+    # Tenta price do campo dedicado, senão extrai do raw_json
+    price = float(product.price) if getattr(product, "price", None) else _extract_price_from_raw(
+        product.raw_json if hasattr(product, "raw_json") else None
+    )
 
     return {
         "sku_id": product.sku_id,
@@ -576,6 +608,8 @@ def _format_product(
         "tamanho": product.size,
         "collection": product.collection,
         "colecao": product.collection,
+        "price": price,
+        "preco": price,
         "image_url": product.image_url or "",
         "imagem_url": product.image_url or "",
         "product_url": url,
