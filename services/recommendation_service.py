@@ -170,10 +170,15 @@ def score_product(
     closet_color: str = "",
     closet_print: str = "",
 ) -> float:
+    # Similaridade baseada em tipo, ocasião, coleção e estampa — NUNCA em department/category
+    # Isso garante que quem comprou na SALE recebe sugestões pelo produto, não pela categoria
     text = normalize(" ".join([
-        str(product.name or ""), str(product.category or ""),
-        str(product.department or ""), str(product.product_type or ""),
-        str(product.occasion or ""), str(product.collection or ""),
+        str(product.name or ""),
+        str(product.product_type or ""),
+        str(product.occasion or ""),
+        str(product.collection or ""),
+        str(product.print_name or ""),
+        str(product.color or ""),
     ]))
 
     score = 1.0
@@ -343,13 +348,19 @@ async def get_customer_recommendations(
         saved_items = saved_result.scalars().all()
 
         def is_gender_match(item_name, item_cat, item_dept):
-            """Verifica se o produto é do gênero dominante do cliente."""
-            text = normalize(f"{item_name or ''} {item_cat or ''} {item_dept or ''}")
-            if "infantil" in text or "kids" in text or "criança" in text:
+            """Verifica gênero pelo nome do produto — ignora department (ex: 'SALE FEMININO')
+            para não limitar recomendações pelo canal de venda onde foi comprado."""
+            # Usa só o nome para detectar gênero — department como 'SALE FEMININO' não é atributo do produto
+            name_text = normalize(str(item_name or ""))
+            dept_text = normalize(str(item_dept or ""))
+            # Remove o prefixo 'sale' antes de checar gênero no department
+            dept_clean = dept_text.replace("sale", "").strip()
+            full_text = f"{name_text} {dept_clean}"
+            if "infantil" in full_text or "kids" in full_text or "criança" in full_text:
                 return False
-            if dominant_gender == "feminino" and "masculino" in text and "feminino" not in text:
+            if dominant_gender == "feminino" and "masculino" in full_text and "feminino" not in full_text:
                 return False
-            if dominant_gender == "masculino" and "feminino" in text and "masculino" not in text:
+            if dominant_gender == "masculino" and "feminino" in full_text and "masculino" not in full_text:
                 return False
             return True
 
@@ -502,8 +513,8 @@ async def _get_customer_profile(email: str, session) -> dict:
     ]).lower()
 
     # Detecta gênero dominante
-    fem_score = text_all.count("feminino") + text_all.count("sale feminino") + text_all.count("blusas femininas")
-    masc_score = text_all.count("masculino") + text_all.count("sale masculino")
+    fem_score = text_all.count("feminino") + text_all.count("blusas femininas")
+    masc_score = text_all.count("masculino")
     inf_score = text_all.count("infantil") + text_all.count("kids")
 
     if fem_score >= masc_score and fem_score >= inf_score:

@@ -293,25 +293,25 @@
         color: #3a2e24;
         margin: 0 0 12px;
       }
-      .ml-shopper-intro { color: #6a5a4a; margin-bottom: 20px; font-size: 14px; }
-      .ml-shopper-question { margin-bottom: 20px; }
-      .ml-shopper-question label { display: block; font-weight: 600; font-size: 14px; color: #3a2e24; margin-bottom: 10px; }
-      .ml-shopper-options { display: flex; flex-wrap: wrap; gap: 8px; }
+      .ml-stylist-intro { color: #6a5a4a; margin-bottom: 20px; font-size: 14px; }
+      .ml-stylist-question { margin-bottom: 20px; }
+      .ml-stylist-question label { display: block; font-weight: 600; font-size: 14px; color: #3a2e24; margin-bottom: 10px; }
+      .ml-stylist-options { display: flex; flex-wrap: wrap; gap: 8px; }
       .ml-option-btn {
         padding: 8px 16px; border: 1.5px solid #c8b89a; border-radius: 20px;
         background: #fff; color: #5a4a3a; font-size: 13px; cursor: pointer; transition: all 0.2s;
       }
       .ml-option-btn:hover { background: #f5ece0; }
       .ml-option-btn.selected { background: #8a6a3a; border-color: #8a6a3a; color: #fff; }
-      .ml-shopper-submit { margin-top: 8px; width: 100%; max-width: 280px; }
-      .ml-shopper-submit:disabled { opacity: 0.4; cursor: not-allowed; }
-      .ml-shopper-result { margin-top: 24px; }
-      .ml-shopper-perfil {
+      .ml-stylist-submit { margin-top: 8px; width: 100%; max-width: 280px; }
+      .ml-stylist-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ml-stylist-result { margin-top: 24px; }
+      .ml-stylist-perfil {
         background: #f5ece0; border-left: 3px solid #8a6a3a;
         padding: 12px 16px; border-radius: 6px; font-size: 14px; color: #3a2e24; margin-bottom: 16px;
       }
-      .ml-shopper-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
-      .ml-shopper-dicas li { margin-bottom: 4px; }
+      .ml-stylist-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
+      .ml-stylist-dicas li { margin-bottom: 4px; }
       .ml-btn-outline {
         background: #fff;
         border: 1.5px solid #b7a36b;
@@ -840,13 +840,13 @@
 
   function buildPersonalShopperSection(email) {
     return `
-      <div class="ml-section" id="ml-shopper-section">
-        <h2>✨ Personal Shopper</h2>
-        <p class="ml-shopper-intro">Responda algumas perguntas e monte um look completo com suas peças + sugestões personalizadas.</p>
-        <form class="ml-shopper-form" id="ml-shopper-form">
-          <div class="ml-shopper-question">
+      <div class="ml-section" id="ml-stylist-section">
+        <h2>✨ Personal Stylist</h2>
+        <p class="ml-stylist-intro">Responda algumas perguntas e monte um look completo com suas peças + sugestões personalizadas.</p>
+        <form class="ml-stylist-form" id="ml-stylist-form">
+          <div class="ml-stylist-question">
             <label>Para qual ocasião você precisa de um look?</label>
-            <div class="ml-shopper-options" data-field="occasion">
+            <div class="ml-stylist-options" data-field="occasion">
               <button type="button" class="ml-option-btn" data-value="praia">🏖️ Praia</button>
               <button type="button" class="ml-option-btn" data-value="resort">🌴 Resort</button>
               <button type="button" class="ml-option-btn" data-value="jantar">🍷 Jantar</button>
@@ -854,49 +854,49 @@
               <button type="button" class="ml-option-btn" data-value="dia_a_dia">☀️ Dia a dia</button>
             </div>
           </div>
-          <div class="ml-shopper-question">
+          <div class="ml-stylist-question">
             <label>O que você quer encontrar?</label>
-            <div class="ml-shopper-options" data-field="goal">
+            <div class="ml-stylist-options" data-field="goal">
               <button type="button" class="ml-option-btn" data-value="cross_sell">🔀 Complementar meus looks</button>
               <button type="button" class="ml-option-btn" data-value="up_sell">⬆️ Peças mais sofisticadas</button>
               <button type="button" class="ml-option-btn" data-value="novidades">🆕 Novidades para meu estilo</button>
             </div>
           </div>
-          <div class="ml-shopper-question">
+          <div class="ml-stylist-question">
             <label>Qual vibe você quer hoje?</label>
-            <div class="ml-shopper-options" data-field="style">
+            <div class="ml-stylist-options" data-field="style">
               <button type="button" class="ml-option-btn" data-value="elegante">💎 Elegante</button>
               <button type="button" class="ml-option-btn" data-value="casual">😎 Casual</button>
               <button type="button" class="ml-option-btn" data-value="leve">🌊 Leve</button>
             </div>
           </div>
-          <button type="submit" class="ml-btn ml-btn-primary ml-shopper-submit" disabled>Montar meu look →</button>
+          <button type="submit" class="ml-btn ml-btn-primary ml-stylist-submit" disabled>Montar meu look →</button>
         </form>
-        <div id="ml-shopper-result" class="ml-shopper-result" style="display:none;"></div>
+        <div id="ml-stylist-result" class="ml-stylist-result" style="display:none;"></div>
       </div>
     `;
   }
 
   function attachPersonalShopper(root, email) {
-    const form = root.querySelector("#ml-shopper-form");
+    const form = root.querySelector("#ml-stylist-form");
     if (!form) return;
     const answers = {};
 
-    form.querySelectorAll(".ml-shopper-options").forEach(group => {
+    form.querySelectorAll(".ml-stylist-options").forEach(group => {
       group.addEventListener("click", e => {
         const btn = e.target.closest(".ml-option-btn");
         if (!btn) return;
         group.querySelectorAll(".ml-option-btn").forEach(b => b.classList.remove("selected"));
         btn.classList.add("selected");
         answers[group.dataset.field] = btn.dataset.value;
-        const submitBtn = form.querySelector(".ml-shopper-submit");
+        const submitBtn = form.querySelector(".ml-stylist-submit");
         if (Object.keys(answers).length >= 3) submitBtn.removeAttribute("disabled");
       });
     });
 
     form.addEventListener("submit", async e => {
       e.preventDefault();
-      const resultEl = root.querySelector("#ml-shopper-result");
+      const resultEl = root.querySelector("#ml-stylist-result");
       resultEl.style.display = "block";
       resultEl.innerHTML = `<div class="ml-loading"><p>Montando seu look personalizado…</p></div>`;
 
@@ -917,8 +917,8 @@
         }
 
         resultEl.innerHTML = `
-          ${perfil ? `<p class="ml-shopper-perfil">${escapeHtml(perfil)}</p>` : ""}
-          ${dicas.length ? `<ul class="ml-shopper-dicas">${dicas.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : ""}
+          ${perfil ? `<p class="ml-stylist-perfil">${escapeHtml(perfil)}</p>` : ""}
+          ${dicas.length ? `<ul class="ml-stylist-dicas">${dicas.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : ""}
           <h3>Sugestões para você</h3>
           <div class="ml-grid">${recs.map(i => buildCard(i, true)).join("")}</div>
         `;
