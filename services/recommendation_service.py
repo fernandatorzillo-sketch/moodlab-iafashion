@@ -373,6 +373,7 @@ async def get_customer_recommendations(
     goal: str = "",
     style: str = "",
     limit: int = 12,
+    print_preference: str = "misto",  # 'liso', 'estampado' ou 'misto' — vem da análise do closet
 ) -> list[dict]:
     """
     Recomendações de look completo baseadas nas seleções do Personal Stylist.
@@ -548,6 +549,21 @@ async def get_customer_recommendations(
         # 6. Cor monocromática (+4)
         if dominant_closet_color and p.color and normalize(p.color) == dominant_closet_color:
             s += 4
+
+        # 7. Estamparia coerente com perfil do cliente (+5)
+        if print_preference != "misto":
+            estampa = normalize(p.print_name or p.name or "")
+            PRINT_TERMS = ["floral","listrad","xadrez","tie dye","animal","onca","onça",
+                           "zebra","cobra","leopard","floresta","folhagem","coqueiros",
+                           "borboleta","palha","tropical","geometr","poa","poá",
+                           "espiral","onda","wave","abstrat","arabesco"]
+            is_printed = any(t in estampa for t in PRINT_TERMS)
+            LISO_TERMS = ["liso","basico","básico","solido","sólido","uni "]
+            is_plain = any(t in estampa for t in LISO_TERMS)
+            if print_preference == "estampado" and is_printed:
+                s += 5
+            elif print_preference == "liso" and is_plain:
+                s += 5
 
         return s
 

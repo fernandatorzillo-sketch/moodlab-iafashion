@@ -49,6 +49,40 @@ def fix_product_url(url: str) -> str:
     return url
 
 
+def _analyze_print_preference(closet_items) -> str:
+    """
+    Analisa o campo estamparia das peças do closet para determinar
+    preferência do cliente: 'estampado', 'liso' ou 'misto'.
+    """
+    estampados = 0
+    lisos = 0
+    for item in closet_items:
+        # Tenta ler estamparia do nome do produto como fallback
+        name = (item.name or "").lower()
+        # Padrões de liso
+        if any(t in name for t in ["liso", "basico", "básico", "solido", "sólido", "uni"]):
+            lisos += 1
+        # Padrões de estampado
+        elif any(t in name for t in [
+            "estampa", "floral", "listrad", "xadrez", "tie dye", "animal",
+            "onça", "onca", "zebra", "cobra", "leopard", "floresta", "folhagem",
+            "coqueiros", "borboleta", "palha", "tropical", "geometr", "poa", "poá",
+            "losango", "arabesco", "abstrat", "wave", "onda", "espiral",
+        ]):
+            estampados += 1
+        else:
+            lisos += 1  # default: considera liso
+    total = estampados + lisos
+    if total == 0:
+        return "misto"
+    ratio = estampados / total
+    if ratio >= 0.6:
+        return "estampado"
+    elif ratio <= 0.3:
+        return "liso"
+    return "misto"
+
+
 async def get_customer_closet_payload(email: str) -> dict:
     email = normalize_email(email)
 
@@ -70,13 +104,39 @@ async def get_customer_closet_payload(email: str) -> dict:
         customer = await _get_customer(session, email)
         closet_items = await _get_customer_closet_items(session, email)
 
-    recommendations = await get_customer_recommendations(email)
+    # Analisa perfil de estamparia do cliente (liso vs estampado)
+    estamparia_profile = _analyze_print_preference(closet_items)
+
+    recommendations = await get_customer_recommendations(
+        email,
+        print_preference=estamparia_profile,
+    )
 
     customer_name = None
     if customer:
         customer_name = customer.full_name or customer.first_name or email.split("@")[0]
     else:
         customer_name = email.split("@")[0]
+
+    # Departamentos que NÃO são moda — excluir do closet
+    NON_FASHION_DEPTS = {"casa", "infantil", "kit", "kits", "utilidades", "mesa", "cama", "banho"}
+    def is_fashion_item(item) -> bool:
+        dept = (item.department or "").lower().strip()
+        name = (item.name or "").lower()
+        # Exclui departamentos não-moda
+        if dept in NON_FASHION_DEPTS:
+            return False
+        # Exclui itens sem nome ou nome genérico
+        if not name or name == "produto":
+            return False
+        # Exclui itens claramente de casa pelo nome
+        casa_terms = ["taça", "taca", "copo", "prato", "vaso", "vela", "toalha",
+                      "almofada", "colcha", "lençol", "lenco", "porta", "quadro"]
+        if any(t in name for t in casa_terms):
+            return False
+        return True
+
+    fashion_items = [item for item in closet_items if is_fashion_item(item)]
 
     closet_payload = [
         {
@@ -86,11 +146,11 @@ async def get_customer_closet_payload(email: str) -> dict:
             "product_id": item.product_id,
             "ref_id": item.ref_id,
 
-            # Nome — compatível com frontend VTEX e MeuClosetPage
+            # Nome
             "nome": item.name,
             "name": item.name,
 
-            # Categoria — ambos os formatos
+            # Categoria
             "categoria": item.category,
             "category": item.category,
 
@@ -98,11 +158,11 @@ async def get_customer_closet_payload(email: str) -> dict:
             "departamento": item.department,
             "department": item.department,
 
-            # Imagem — ambos os formatos que o frontend usa
+            # Imagem — URL limpa sem ?v=
             "imagem_url": fix_image_url(item.image_url),
             "image_url": fix_image_url(item.image_url),
 
-            # Link — ambos os formatos
+            # Link
             "link_produto": fix_product_url(item.product_url),
             "product_url": fix_product_url(item.product_url),
             "url": fix_product_url(item.product_url),
@@ -118,7 +178,7 @@ async def get_customer_closet_payload(email: str) -> dict:
             "total_spent": float(item.total_spent or 0),
             "last_purchase_at": item.last_purchase_at.isoformat() if item.last_purchase_at else None,
         }
-        for item in closet_items
+        for item in fashion_items
     ]
 
     # Formata recomendações compatível com frontend VTEX

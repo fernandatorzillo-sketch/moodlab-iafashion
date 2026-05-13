@@ -1,9 +1,5 @@
 (function () {
   const CONFIG = {
-    // CORRIGIDO: substitua pela URL real do seu backend no Render.
-    // Você também pode injetar via VTEX CMS assim:
-    //   <script>window.MOODLAB_CLOSET_CONFIG = { API_BASE: "https://seu-backend.onrender.com" };</script>
-    // colocado ANTES deste script na página.
     API_BASE:
       (window.MOODLAB_CLOSET_CONFIG && window.MOODLAB_CLOSET_CONFIG.API_BASE) ||
       "https://closet-moodlab.onrender.com",
@@ -260,28 +256,6 @@
         color: #5a4a3a;
         margin: 4px 0 8px;
       }
-      .ml-card-price-de {
-        font-size: 12px;
-        color: #9a8f83;
-        text-decoration: line-through;
-        margin-bottom: 2px;
-      }
-      .ml-card-price-por {
-        font-size: 16px;
-        font-weight: 700;
-        color: #7a4a1a;
-      }
-      .ml-card-sold-out {
-        display: inline-block;
-        font-size: 11px;
-        background: #f5f0e8;
-        color: #9a8f83;
-        border: 1px solid #e0d5c0;
-        border-radius: 20px;
-        padding: 4px 12px;
-        margin: 4px 0 8px;
-        font-style: italic;
-      }
       .ml-look-box {
         margin-bottom: 24px;
         padding-bottom: 16px;
@@ -293,25 +267,25 @@
         color: #3a2e24;
         margin: 0 0 12px;
       }
-      .ml-stylist-intro { color: #6a5a4a; margin-bottom: 20px; font-size: 14px; }
-      .ml-stylist-question { margin-bottom: 20px; }
-      .ml-stylist-question label { display: block; font-weight: 600; font-size: 14px; color: #3a2e24; margin-bottom: 10px; }
-      .ml-stylist-options { display: flex; flex-wrap: wrap; gap: 8px; }
+      .ml-shopper-intro { color: #6a5a4a; margin-bottom: 20px; font-size: 14px; }
+      .ml-shopper-question { margin-bottom: 20px; }
+      .ml-shopper-question label { display: block; font-weight: 600; font-size: 14px; color: #3a2e24; margin-bottom: 10px; }
+      .ml-shopper-options { display: flex; flex-wrap: wrap; gap: 8px; }
       .ml-option-btn {
         padding: 8px 16px; border: 1.5px solid #c8b89a; border-radius: 20px;
         background: #fff; color: #5a4a3a; font-size: 13px; cursor: pointer; transition: all 0.2s;
       }
       .ml-option-btn:hover { background: #f5ece0; }
       .ml-option-btn.selected { background: #8a6a3a; border-color: #8a6a3a; color: #fff; }
-      .ml-stylist-submit { margin-top: 8px; width: 100%; max-width: 280px; }
-      .ml-stylist-submit:disabled { opacity: 0.4; cursor: not-allowed; }
-      .ml-stylist-result { margin-top: 24px; }
-      .ml-stylist-perfil {
+      .ml-shopper-submit { margin-top: 8px; width: 100%; max-width: 280px; }
+      .ml-shopper-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ml-shopper-result { margin-top: 24px; }
+      .ml-shopper-perfil {
         background: #f5ece0; border-left: 3px solid #8a6a3a;
         padding: 12px 16px; border-radius: 6px; font-size: 14px; color: #3a2e24; margin-bottom: 16px;
       }
-      .ml-stylist-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
-      .ml-stylist-dicas li { margin-bottom: 4px; }
+      .ml-shopper-dicas { font-size: 13px; color: #6a5a4a; margin: 0 0 16px 16px; }
+      .ml-shopper-dicas li { margin-bottom: 4px; }
       .ml-btn-outline {
         background: #fff;
         border: 1.5px solid #b7a36b;
@@ -547,13 +521,15 @@
     const category = escapeHtml(item.category || item.categoria || item.department || "");
     const title = escapeHtml(item.name || item.nome || "Produto");
     const reason = escapeHtml(item.motivo || item.reason || "");
-    const rawImageUrl = item.image_url || item.imagem_url || "";
+
+    // Limpa URL: remove ?v=... e normaliza tamanho para 500-500
+    const rawImageUrl = (item.image_url || item.imagem_url || "").split("?")[0];
     const imageUrl = rawImageUrl
-      .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
+      .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]+)/, "/arquivos/ids/$1-500-500$2");
     const isVtexImage = imageUrl && (
-      imageUrl.includes("lojaaguadecoco.vteximg.com.br") ||
-      imageUrl.includes("aguadecoco.vteximg.com.br") ||
-      imageUrl.includes("vtexassets.com")
+      imageUrl.includes("vteximg.com.br") ||
+      imageUrl.includes("vtexassets.com") ||
+      imageUrl.includes("vtexcommercestable.com")
     );
     const finalImageUrl = isVtexImage
       ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
@@ -568,22 +544,10 @@
       : `<img src="${placeholderSvg}" alt="Sem imagem" />`;
 
     const url = item.url || item.link_produto || item.product_url || "#";
-    const salePrice  = parseFloat(item.price  || item.preco     || 0);
-    const listPrice  = parseFloat(item.list_price || item.preco_de || 0);
-    const hasDiscount = listPrice > 0 && listPrice > salePrice + 0.01;
-    let priceHtml = "";
-    if (salePrice > 0) {
-      const fmt = v => Number(v).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-      if (hasDiscount) {
-        priceHtml = `
-          <div class="ml-card-price-de">De ${fmt(listPrice)}</div>
-          <div class="ml-card-price-por">Por ${fmt(salePrice)}</div>`;
-      } else {
-        priceHtml = `<div class="ml-card-price">${fmt(salePrice)}</div>`;
-      }
-    } else {
-      priceHtml = `<div class="ml-card-sold-out">✓ Você garantiu essa peça</div>`;
-    }
+    const rawPrice = item.price || item.preco || 0;
+    const priceHtml = rawPrice > 0
+      ? `<div class="ml-card-price">${Number(rawPrice).toLocaleString("pt-BR", {style:"currency", currency:"BRL"})}</div>`
+      : "";
 
     return `
       <div class="ml-card">
@@ -601,6 +565,7 @@
       </div>
     `;
   }
+
 
   function buildClosetSection(closet) {
     const items = Array.isArray(closet) ? closet : [];
@@ -645,6 +610,7 @@
     `;
   }
 
+  // Agrupa peças por tipo (ex: "maio", "biquini", "saida", "vestido")
   function classifyPiece(item) {
     const name = (item.name || item.nome || "").toLowerCase();
     const cat  = (item.category || item.categoria || "").toLowerCase();
@@ -668,11 +634,13 @@
     const pieces = Array.isArray(closet) ? closet.filter(withImg) : [];
     const recs   = Array.isArray(recommendations) ? recommendations.filter(withImg) : [];
 
+    // Marca fonte para mostrar "do seu closet" vs "sugestão"
     const all = [
       ...pieces.map(i => ({...i, _source: "closet", _type: classifyPiece(i)})),
       ...recs.map(i   => ({...i, _source: "rec",    _type: classifyPiece(i)})),
     ];
 
+    // Receitas de look: lista de tipos que fazem sentido juntos
     const RECIPES = [
       {
         title: "Look Praia",
@@ -692,12 +660,14 @@
       const usedIds = new Set();
       const lookItems = [];
 
+      // Tenta preencher cada grupo required (pega 1 do closet ou 1 sugestão)
       for (const group of recipe.required) {
         const candidate = all.find(i =>
           group.includes(i._type) && !usedIds.has(i.sku_id || i.name)
         );
         if (candidate) {
           usedIds.add(candidate.sku_id || candidate.name);
+          // Adiciona nota se é sugestão
           if (candidate._source === "rec") {
             candidate._label = "Sugestão para complementar";
           }
@@ -705,6 +675,7 @@
         }
       }
 
+      // Adiciona opcionais até 4 peças
       for (const optType of recipe.optional) {
         if (lookItems.length >= 4) break;
         const opt = all.find(i =>
@@ -717,6 +688,7 @@
         }
       }
 
+      // Só monta look se tem pelo menos 2 peças de tipos DIFERENTES
       const types = new Set(lookItems.map(i => i._type));
       if (lookItems.length >= 2 && types.size >= 2) {
         looks.push({title: recipe.title, items: lookItems});
@@ -840,13 +812,13 @@
 
   function buildPersonalShopperSection(email) {
     return `
-      <div class="ml-section" id="ml-stylist-section">
-        <h2>✨ Personal Stylist</h2>
-        <p class="ml-stylist-intro">Responda algumas perguntas e monte um look completo com suas peças + sugestões personalizadas.</p>
-        <form class="ml-stylist-form" id="ml-stylist-form">
-          <div class="ml-stylist-question">
+      <div class="ml-section" id="ml-shopper-section">
+        <h2>✨ Personal Shopper</h2>
+        <p class="ml-shopper-intro">Responda algumas perguntas e monte um look completo com suas peças + sugestões personalizadas.</p>
+        <form class="ml-shopper-form" id="ml-shopper-form">
+          <div class="ml-shopper-question">
             <label>Para qual ocasião você precisa de um look?</label>
-            <div class="ml-stylist-options" data-field="occasion">
+            <div class="ml-shopper-options" data-field="occasion">
               <button type="button" class="ml-option-btn" data-value="praia">🏖️ Praia</button>
               <button type="button" class="ml-option-btn" data-value="resort">🌴 Resort</button>
               <button type="button" class="ml-option-btn" data-value="jantar">🍷 Jantar</button>
@@ -854,51 +826,52 @@
               <button type="button" class="ml-option-btn" data-value="dia_a_dia">☀️ Dia a dia</button>
             </div>
           </div>
-          <div class="ml-stylist-question">
+          <div class="ml-shopper-question">
             <label>O que você quer encontrar?</label>
-            <div class="ml-stylist-options" data-field="goal">
+            <div class="ml-shopper-options" data-field="goal">
               <button type="button" class="ml-option-btn" data-value="cross_sell">🔀 Complementar meus looks</button>
               <button type="button" class="ml-option-btn" data-value="up_sell">⬆️ Peças mais sofisticadas</button>
               <button type="button" class="ml-option-btn" data-value="novidades">🆕 Novidades para meu estilo</button>
             </div>
           </div>
-          <div class="ml-stylist-question">
+          <div class="ml-shopper-question">
             <label>Qual vibe você quer hoje?</label>
-            <div class="ml-stylist-options" data-field="style">
+            <div class="ml-shopper-options" data-field="style">
               <button type="button" class="ml-option-btn" data-value="elegante">💎 Elegante</button>
               <button type="button" class="ml-option-btn" data-value="casual">😎 Casual</button>
               <button type="button" class="ml-option-btn" data-value="leve">🌊 Leve</button>
             </div>
           </div>
-          <button type="submit" class="ml-btn ml-btn-primary ml-stylist-submit" disabled>Montar meu look →</button>
+          <button type="submit" class="ml-btn ml-btn-primary ml-shopper-submit" disabled>Montar meu look →</button>
         </form>
-        <div id="ml-stylist-result" class="ml-stylist-result" style="display:none;"></div>
+        <div id="ml-shopper-result" class="ml-shopper-result" style="display:none;"></div>
       </div>
     `;
   }
 
   function attachPersonalShopper(root, email) {
-    const form = root.querySelector("#ml-stylist-form");
+    const form = root.querySelector("#ml-shopper-form");
     if (!form) return;
     const answers = {};
 
-    form.querySelectorAll(".ml-stylist-options").forEach(group => {
+    form.querySelectorAll(".ml-shopper-options").forEach(group => {
       group.addEventListener("click", e => {
         const btn = e.target.closest(".ml-option-btn");
         if (!btn) return;
         group.querySelectorAll(".ml-option-btn").forEach(b => b.classList.remove("selected"));
         btn.classList.add("selected");
         answers[group.dataset.field] = btn.dataset.value;
-        const submitBtn = form.querySelector(".ml-stylist-submit");
+        // Enable submit when all 3 questions answered
+        const submitBtn = form.querySelector(".ml-shopper-submit");
         if (Object.keys(answers).length >= 3) submitBtn.removeAttribute("disabled");
       });
     });
 
     form.addEventListener("submit", async e => {
       e.preventDefault();
-      const resultEl = root.querySelector("#ml-stylist-result");
+      const resultEl = root.querySelector("#ml-shopper-result");
       resultEl.style.display = "block";
-      resultEl.innerHTML = `<div class="ml-loading"><p>Montando seu look personalizado…</p></div>`;
+      resultEl.innerHTML = `<div class="ml-loading"><div class="ml-spinner"></div><p>Montando seu look personalizado…</p></div>`;
 
       try {
         const resp = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/recommendations`, {
@@ -917,8 +890,8 @@
         }
 
         resultEl.innerHTML = `
-          ${perfil ? `<p class="ml-stylist-perfil">${escapeHtml(perfil)}</p>` : ""}
-          ${dicas.length ? `<ul class="ml-stylist-dicas">${dicas.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : ""}
+          ${perfil ? `<p class="ml-shopper-perfil">${escapeHtml(perfil)}</p>` : ""}
+          ${dicas.length ? `<ul class="ml-shopper-dicas">${dicas.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : ""}
           <h3>Sugestões para você</h3>
           <div class="ml-grid">${recs.map(i => buildCard(i, true)).join("")}</div>
         `;
