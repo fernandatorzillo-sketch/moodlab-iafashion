@@ -22,6 +22,10 @@ def fix_image_url(url: str) -> str:
     if not url:
         return ""
     import re
+
+def normalize(v) -> str:
+    return str(v or "").strip().lower()
+
     url = str(url).strip()
     # Remove query string (?v=... ou qualquer ?...)
     url = re.sub(r'\?.*$', '', url)
@@ -49,29 +53,31 @@ def fix_product_url(url: str) -> str:
     return url
 
 
-def _analyze_print_preference(closet_items) -> str:
+async def _analyze_print_preference_async(closet_sku_ids: list) -> str:
     """
-    Analisa o campo estamparia das peças do closet para determinar
-    preferência do cliente: 'estampado', 'liso' ou 'misto'.
+    Analisa print_name real (campo VTEX) das peças do closet.
+    Valores: ESTAMPADO, LISO, LISO TRABALHADO
     """
-    estampados = 0
-    lisos = 0
-    for item in closet_items:
-        # Tenta ler estamparia do nome do produto como fallback
-        name = (item.name or "").lower()
-        # Padrões de liso
-        if any(t in name for t in ["liso", "basico", "básico", "solido", "sólido", "uni"]):
-            lisos += 1
-        # Padrões de estampado
-        elif any(t in name for t in [
-            "estampa", "floral", "listrad", "xadrez", "tie dye", "animal",
-            "onça", "onca", "zebra", "cobra", "leopard", "floresta", "folhagem",
-            "coqueiros", "borboleta", "palha", "tropical", "geometr", "poa", "poá",
-            "losango", "arabesco", "abstrat", "wave", "onda", "espiral",
-        ]):
-            estampados += 1
-        else:
-            lisos += 1  # default: considera liso
+    if not closet_sku_ids:
+        return "misto"
+    try:
+        from sqlalchemy import select
+        from models.catalog_product import CatalogProduct
+        from services.closet_db import AsyncSessionLocal
+        async with AsyncSessionLocal() as s:
+            r = await s.execute(
+                select(CatalogProduct.print_name)
+                .where(CatalogProduct.sku_id.in_(closet_sku_ids[:30]))
+            )
+            prints = [normalize(row.print_name) for row in r.fetchall() if row.print_name]
+    except Exception:
+        return "misto"
+
+    if not prints:
+        return "misto"
+
+    estampados = sum(1 for p in prints if "estampado" in p)
+    lisos      = sum(1 for p in prints if "liso" in p)
     total = estampados + lisos
     if total == 0:
         return "misto"
@@ -81,6 +87,22 @@ def _analyze_print_preference(closet_items) -> str:
     elif ratio <= 0.3:
         return "liso"
     return "misto"
+
+
+def _analyze_print_preference(closet_items) -> str:
+    """Versão síncrona — mantida para compatibilidade. Usa nome como aproximação."""
+    estampados = lisos = 0
+    for item in closet_items:
+        name = (item.name or "").lower()
+        if any(t in name for t in ["estampa","floral","listrad","tie dye","onça","onca",
+                                    "floresta","folhagem","coqueiros","borboleta","espiral"]):
+            estampados += 1
+        else:
+            lisos += 1
+    total = estampados + lisos
+    if total == 0: return "misto"
+    ratio = estampados / total
+    return "estampado" if ratio >= 0.6 else "liso" if ratio <= 0.3 else "misto"
 
 
 async def get_customer_closet_payload(email: str) -> dict:
@@ -104,8 +126,9 @@ async def get_customer_closet_payload(email: str) -> dict:
         customer = await _get_customer(session, email)
         closet_items = await _get_customer_closet_items(session, email)
 
-    # Analisa perfil de estamparia do cliente (liso vs estampado)
-    estamparia_profile = _analyze_print_preference(closet_items)
+    # Analisa estamparia usando print_name real do catalog_products
+    closet_sku_ids = [item.sku_id for item in closet_items if item.sku_id]
+    estamparia_profile = await _analyze_print_preference_async(closet_sku_ids)
 
     recommendations = await get_customer_recommendations(
         email,

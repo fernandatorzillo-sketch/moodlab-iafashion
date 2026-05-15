@@ -137,6 +137,43 @@ COLOR_HARMONY = {
 }
 
 
+# Mapeamento de termos de cor no nome do produto para cor normalizada
+NAME_TO_COLOR = {
+    "preto": "preto", "black": "preto",
+    "branco": "branco", "white": "branco",
+    "bege": "bege", "areia": "bege", "nude": "bege", "caramelo": "bege",
+    "off white": "off white", "off-white": "off white", "cru": "off white",
+    "azul": "azul", "blue": "azul", "marinho": "azul", "navy": "azul", "cobalt": "azul",
+    "verde": "verde", "green": "verde", "oliva": "verde", "musgo": "verde", "eucalipto": "verde",
+    "amarelo": "amarelo", "yellow": "amarelo", "mostarda": "amarelo", "citrico": "amarelo",
+    "rosa": "rosa", "pink": "rosa", "buganville": "rosa", "coral": "rosa",
+    "laranja": "laranja", "orange": "laranja",
+    "vermelho": "vermelho", "red": "vermelho", "hibisco": "vermelho", "hibísco": "vermelho",
+    "vinho": "vermelho", "marsala": "vermelho", "bordô": "vermelho", "bordo": "vermelho",
+    "jabuticaba": "vermelho",  # cor específica Água de Coco
+    "marrom": "marrom", "brown": "marrom", "chocolate": "marrom", "terra": "marrom",
+    "lilas": "rosa", "lilás": "rosa", "lavanda": "rosa", "roxo": "roxo", "purple": "roxo",
+    "dourado": "dourado", "gold": "dourado", "golden": "dourado",
+    "prata": "prata", "silver": "prata",
+    "colorido": "colorido", "estampado": "colorido",
+    "fenix": "vermelho", "fênix": "vermelho",
+    "coqueiros": "verde",
+    "onca": "colorido", "onça": "colorido",
+    "abrolhos": "verde",
+    "lotus": "rosa", "lótus": "rosa",
+}
+
+
+def extract_color_from_name(name: str) -> str:
+    """Extrai cor do nome do produto como fallback quando color field é NULL."""
+    n = normalize(name or "")
+    # Testa multi-word primeiro (ex: "off white")
+    for term, color in sorted(NAME_TO_COLOR.items(), key=lambda x: -len(x[0])):
+        if term in n:
+            return color
+    return ""
+
+
 def colors_harmonize(color1: str, color2: str) -> bool:
     """Verifica se duas cores combinam."""
     if not color1 or not color2:
@@ -485,7 +522,7 @@ async def get_customer_recommendations(
                     select(CatalogProduct.color)
                     .where(CatalogProduct.sku_id.in_(closet_sku_ids[:20]))
                 )
-                colors = [normalize(r.color or "") for r in rc.fetchall() if r.color]
+                colors = [normalize(r.color) for r in rc.fetchall() if r.color]
                 dominant_closet_color = max(set(colors), key=colors.count) if colors else ""
         except Exception:
             pass
@@ -581,24 +618,30 @@ async def get_customer_recommendations(
             if any(t in n for t in STYLE_TERMS[style_n]):
                 s += 6
 
-        # 6. Cor monocromática (+4)
-        if dominant_closet_color and p.color and normalize(p.color) == dominant_closet_color:
-            s += 4
+        # 6. Harmonia de cor — usa campo color (populado pelo backfill_specs)
+        p_color = normalize(p.color or "")
+        if p_color and dominant_closet_color:
+            if p_color == dominant_closet_color:
+                s += 5  # monocromático
+            elif colors_harmonize(dominant_closet_color, p_color):
+                s += 2  # harmonia de cor
+            else:
+                s -= 4  # cores incompatíveis — penaliza
 
         # 7. Estamparia coerente com perfil do cliente (+5)
-        if print_preference != "misto":
-            estampa = normalize(p.print_name or p.name or "")
-            PRINT_TERMS = ["floral","listrad","xadrez","tie dye","animal","onca","onça",
-                           "zebra","cobra","leopard","floresta","folhagem","coqueiros",
-                           "borboleta","palha","tropical","geometr","poa","poá",
-                           "espiral","onda","wave","abstrat","arabesco"]
-            is_printed = any(t in estampa for t in PRINT_TERMS)
-            LISO_TERMS = ["liso","basico","básico","solido","sólido","uni "]
-            is_plain = any(t in estampa for t in LISO_TERMS)
+        # Usa print_name real (populado pelo backfill_specs): ESTAMPADO, LISO, LISO TRABALHADO
+        if print_preference != "misto" and p.print_name:
+            pn = normalize(p.print_name)
+            is_printed = "estampado" in pn
+            is_plain   = "liso" in pn  # LISO e LISO TRABALHADO
             if print_preference == "estampado" and is_printed:
                 s += 5
             elif print_preference == "liso" and is_plain:
                 s += 5
+            elif print_preference == "estampado" and is_plain:
+                s -= 2  # cliente quer estampado, produto é liso
+            elif print_preference == "liso" and is_printed:
+                s -= 2  # cliente quer liso, produto é estampado
 
         return s
 
