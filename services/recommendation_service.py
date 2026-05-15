@@ -519,16 +519,30 @@ async def get_customer_recommendations(
         if any(t in n_full for t in ["infantil","kids","criança","baby","bebê"]):
             return False
         # Termos exclusivamente masculinos (polo, sunga, etc)
-        MASC_ONLY = ["masculino","sunga","polo masculino","camiseta masculino","short masculino"]
-        FEM_ONLY  = ["feminino","biquíni","biquini","sutiã","sutia","calcinha","maiô","maio"]
-        is_masc = any(t in n_full for t in MASC_ONLY)
-        is_fem  = any(t in n_full for t in FEM_ONLY)
+        # Bloqueia masculino em look feminino e vice-versa
+        # Verifica tanto no nome quanto no department
+        MASC_TERMS = ["masculino", "sunga", "polo tricô", "polo tricо", "polo trigo",
+                      "camisa polo", "camiseta polo"]
+        FEM_TERMS  = ["feminino", "biquíni", "biquini", "sutiã", "sutia",
+                      "calcinha", "maiô", "maio"]
+
+        # Detecta masculino: checa dept + category + nome
+        # "Camisa Polo Tricô Montanhas" tem dept="Sale", category="Sale Masculino"
+        dept_lower = normalize(dept or "")
+        # Busca category do produto — vem no campo category quando disponível
+        # Usamos n_full que já tem dept limpo; category é passada junto no dept arg
+        is_masc = ("masculino" in dept_lower) or ("masculino" in n_full) or any(t in n_full for t in MASC_TERMS)
+        is_fem  = ("feminino" in dept_lower) or ("feminino" in n_full) or any(t in n_full for t in FEM_TERMS)
+
         if dominant_gender == "feminino" and is_masc and not is_fem:
             return False
         if dominant_gender == "masculino" and is_fem and not is_masc:
             return False
         return True
-    products = [p for p in products if not is_blocked_home_product(p) and gender_ok(p.name, p.department)]
+    # Passa category junto com department para gender_ok detectar "Sale Masculino"
+    products = [p for p in products if not is_blocked_home_product(p) and gender_ok(
+        p.name, f"{p.department or ''} {p.category or ''}"
+    )]
 
     # ── Scoring ───────────────────────────────────────────────────────────────
     occasion_n = normalize(occasion)
