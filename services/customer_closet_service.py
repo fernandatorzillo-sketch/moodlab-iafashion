@@ -255,9 +255,39 @@ async def _get_customer(session: AsyncSession, email: str):
 
 
 async def _get_customer_closet_items(session: AsyncSession, email: str):
+    from models.catalog_product import CatalogProduct
+    from sqlalchemy.orm import aliased
+
     result = await session.execute(
         select(CustomerClosetItem)
         .where(CustomerClosetItem.email == email)
         .order_by(CustomerClosetItem.last_purchase_at.desc().nullslast())
     )
-    return result.scalars().all()
+    items = result.scalars().all()
+
+    # Enriquece com imagem/url/category/department do catalog_products quando NULL
+    sku_ids_null = [i.sku_id for i in items if i.sku_id and not i.image_url]
+    if sku_ids_null:
+        cp_result = await session.execute(
+            select(
+                CatalogProduct.sku_id,
+                CatalogProduct.image_url,
+                CatalogProduct.product_url,
+                CatalogProduct.category,
+                CatalogProduct.department,
+            ).where(CatalogProduct.sku_id.in_(sku_ids_null))
+        )
+        cp_map = {row.sku_id: row for row in cp_result.fetchall()}
+        for item in items:
+            if item.sku_id in cp_map:
+                cp = cp_map[item.sku_id]
+                if not item.image_url and cp.image_url:
+                    item.image_url = cp.image_url
+                if not item.product_url and cp.product_url:
+                    item.product_url = cp.product_url
+                if not item.category and cp.category:
+                    item.category = cp.category
+                if not item.department and cp.department:
+                    item.department = cp.department
+
+    return items
