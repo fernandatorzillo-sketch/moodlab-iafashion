@@ -287,6 +287,16 @@ def score_product(
         else:
             score -= 3  # dois estampados, penaliza
 
+    # Score por novidade — ProductFinalScore: quanto maior, mais recente/relevante
+    try:
+        raw = product.raw_json or {}
+        sku_raw = raw.get("sku") or raw
+        final_score = float(sku_raw.get("ProductFinalScore") or raw.get("ProductFinalScore") or 0)
+        if final_score > 0:
+            score += min(final_score / 20.0, 4.0)  # max +4 por novidade
+    except Exception:
+        pass
+
     return score
 
 
@@ -343,8 +353,13 @@ def build_reason(
                     break
 
     if goal == "cross_sell":
-        if closet_match:
-            parts.append(f"Combina com seu {closet_match} do closet.")
+        prod_color = normalize(product.color or product.name or "")
+        neutral_colors = ["branco", "bege", "off white", "preto", "nude"]
+        is_neutral = any(nc in prod_color for nc in neutral_colors)
+        if closet_match and is_neutral and closet_pieces and len(closet_pieces) >= 2:
+            parts.append(f"Tom neutro — combina com várias peças do seu closet, incluindo {closet_match}.")
+        elif closet_match:
+            parts.append(f"Completa o look com seu {closet_match} do closet.")
         else:
             parts.append("Complementa peças que você já tem no closet.")
     elif goal == "up_sell":
@@ -428,7 +443,7 @@ async def get_customer_recommendations(
 
     # ── Boost score pelas seleções ─────────────────────────────────────────────
     GOAL_TERMS = {
-        "cross_sell": ["saida","saída","canga","bolsa","sandalia","sandália","chapeu","chapéu","acessorio"],
+        "cross_sell": [],  # score por sufixo já cuida disso (+20 para cross_sell)
         "up_sell":    ["vestido","camisa","linho","alfaiataria","pantalona","resort","bordado"],
         "novidades":  [],
     }
@@ -498,15 +513,21 @@ async def get_customer_recommendations(
 
     # ── Filtro de gênero ──────────────────────────────────────────────────────
     def gender_ok(name, dept):
-        n = normalize(f"{name or ''} {(dept or '').replace('Sale','').replace('sale','')}")
-        if any(t in n for t in ["infantil","kids","criança","baby","bebê"]):
+        n_name = normalize(name or "")
+        n_dept = normalize((dept or "").replace("sale","").replace("Sale","").strip())
+        n_full = f"{n_name} {n_dept}"
+        if any(t in n_full for t in ["infantil","kids","criança","baby","bebê"]):
             return False
-        if dominant_gender == "feminino" and "masculino" in n and "feminino" not in n:
+        # Termos exclusivamente masculinos (polo, sunga, etc)
+        MASC_ONLY = ["masculino","sunga","polo masculino","camiseta masculino","short masculino"]
+        FEM_ONLY  = ["feminino","biquíni","biquini","sutiã","sutia","calcinha","maiô","maio"]
+        is_masc = any(t in n_full for t in MASC_ONLY)
+        is_fem  = any(t in n_full for t in FEM_ONLY)
+        if dominant_gender == "feminino" and is_masc and not is_fem:
             return False
-        if dominant_gender == "masculino" and "feminino" in n and "masculino" not in n:
+        if dominant_gender == "masculino" and is_fem and not is_masc:
             return False
         return True
-
     products = [p for p in products if not is_blocked_home_product(p) and gender_ok(p.name, p.department)]
 
     # ── Scoring ───────────────────────────────────────────────────────────────
@@ -523,7 +544,7 @@ async def get_customer_recommendations(
         # 1. Match de terminação com closet (+15 — sinal mais forte)
         sfx = extract_name_suffix(p.name or "")
         if sfx and any(sfx in cs or cs in sfx for cs in closet_suffixes):
-            s += 15
+            s += 20 if goal_n == "cross_sell" else 15
 
         # 2. Slot certo para a ocasião (+10)
         if slots and typ in slots:
