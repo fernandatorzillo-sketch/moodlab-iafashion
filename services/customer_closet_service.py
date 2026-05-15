@@ -142,8 +142,17 @@ async def get_customer_closet_payload(email: str) -> dict:
 
     # Departamentos que NÃO são moda — excluir do closet
     NON_FASHION_DEPTS = {"casa", "infantil", "kit", "kits", "utilidades", "mesa", "cama", "banho"}
+
+    # Detecta gênero dominante do closet para filtrar itens masculinos
+    all_names = " ".join((i.name or "") for i in closet_items).lower()
+    all_cats  = " ".join((i.category or "") + " " + (i.department or "") for i in closet_items).lower()
+    fem_signals  = all_names.count("biquíni") + all_names.count("biquini") + all_names.count("calcinha") + all_names.count("maiô") + all_cats.count("feminino")
+    masc_signals = all_cats.count("masculino") + all_names.count("sunga")
+    dominant_gender = "masculino" if masc_signals > fem_signals else "feminino"
+
     def is_fashion_item(item) -> bool:
         dept = (item.department or "").lower().strip()
+        cat  = (item.category or "").lower().strip()
         name = (item.name or "").lower()
         # Exclui departamentos não-moda
         if dept in NON_FASHION_DEPTS:
@@ -156,6 +165,15 @@ async def get_customer_closet_payload(email: str) -> dict:
                       "almofada", "colcha", "lençol", "lenco", "porta", "quadro"]
         if any(t in name for t in casa_terms):
             return False
+        # Exclui itens masculinos do closet feminino
+        if dominant_gender == "feminino":
+            is_masc_cat = "masculino" in dept or "masculino" in cat
+            is_masc_name = any(t in name for t in [
+                "sunga", "polo tricô", "polo trigo", "camisa polo masculin",
+                "camiseta masculin", "short masculin", "bermuda masculin"
+            ])
+            if is_masc_cat or is_masc_name:
+                return False
         return True
 
     fashion_items = [item for item in closet_items if is_fashion_item(item)]
