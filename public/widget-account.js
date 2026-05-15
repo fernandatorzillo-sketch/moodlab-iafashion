@@ -522,25 +522,24 @@
     const title = escapeHtml(item.name || item.nome || "Produto");
     const reason = escapeHtml(item.motivo || item.reason || "");
 
-    // Limpa URL: remove ?v=...
+    // Limpa URL: remove ?v=... e normaliza tamanho para 500-500
     const rawImageUrl = (item.image_url || item.imagem_url || "").split("?")[0];
-    // URLs com nome de arquivo (/ids/123-728-1090/NOME.jpg) — carrega direto no browser
-    // (browser tem cookies VTEX; proxy retorna 403 para esses SKUs arquivados)
-    // URLs simples (/ids/123/image.jpg) — normaliza tamanho e passa pelo proxy
-    const hasFilename = /\/arquivos\/ids\/\d+-\d+-\d+\/[A-Z0-9]/.test(rawImageUrl);
-    const imageUrl = hasFilename
-      ? rawImageUrl
-      : rawImageUrl.replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]+)/, "/arquivos/ids/$1-500-500$2");
+    // Normaliza dimensões: /ids/123-728-1090/nome.jpg → /ids/123-500-500/nome.jpg
+    // URLs simples /ids/123/image.jpg ficam como estão
+    const imageUrl = rawImageUrl.replace(
+      /\/arquivos\/ids\/(\d+)-\d+-\d+(\/[^?#]+)/,
+      "/arquivos/ids/$1-500-500$2"
+    );
+    // SEMPRE usa o proxy para URLs VTEX — evita bloqueio CORS no browser
     const isVtexImage = imageUrl && (
       imageUrl.includes("vteximg.com.br") ||
       imageUrl.includes("vtexassets.com") ||
       imageUrl.includes("vtexcommercestable.com")
     );
-    const finalImageUrl = (isVtexImage && !hasFilename)
+    const finalImageUrl = isVtexImage
       ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
       : imageUrl;
 
-    // Não mostra recomendação sem imagem
     if (showReason && !finalImageUrl) return "";
 
     const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
