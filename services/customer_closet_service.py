@@ -10,33 +10,32 @@ def normalize_email(email: str) -> str:
     return str(email or "").strip().lower()
 
 
+def normalize(v) -> str:
+    return str(v or "").strip().lower()
+
+
 def fix_image_url(url: str) -> str:
     """
-    Normaliza a URL da imagem VTEX para 500x500.
-    Remove query string (?v=...) que pode causar erros no proxy.
-    Suporta formatos:
-      /arquivos/ids/123456/nome.jpg
-      /arquivos/ids/123456-728-1090/nome.jpg
-      /arquivos/ids/123456-728-1090/nome.jpg?v=638...
+    Normaliza a URL da imagem VTEX.
+    - Remove query string (?v=...)
+    - URLs com dimensoes (728-1090): substitui por 500-500
+    - URLs sem dimensoes (/ids/123/image.jpg): deixa como está
+      (adicionar 500-500 quebraria essas URLs na VTEX)
     """
     if not url:
         return ""
     import re
-
-def normalize(v) -> str:
-    return str(v or "").strip().lower()
-
     url = str(url).strip()
-    # Remove query string (?v=... ou qualquer ?...)
+    # Remove query string
     url = re.sub(r'\?.*$', '', url)
-    # Normaliza dimensoes para 500-500
-    # Caso 1: tem dimensoes  -> /ids/123456-728-1090/nome -> /ids/123456-500-500/nome
-    # Caso 2: sem dimensoes  -> /ids/123456/nome          -> /ids/123456-500-500/nome
+    # Substitui dimensoes existentes por 500-500
+    # Apenas quando JA tem dimensoes no path (ex: -728-1090)
     url = re.sub(
-        r'(/arquivos/ids/[0-9]+)(?:-[0-9]+-[0-9]+)?(/[^?#]+)',
+        r'(/arquivos/ids/[0-9]+)-[0-9]+-[0-9]+(/[^?#]+)',
         lambda m: m.group(1) + "-500-500" + m.group(2),
         url,
     )
+    # URLs sem dimensoes (/ids/123456/image.jpg) ficam como estão
     return url
 
 
