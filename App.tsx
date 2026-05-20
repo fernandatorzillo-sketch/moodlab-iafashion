@@ -22,6 +22,7 @@ import CuratedLooksPage from './pages/CuratedLooksPage';
 import BrandRulesPage from './pages/BrandRulesPage';
 import AILearningPage from './pages/AILearningPage';
 import MeuClosetPage from './pages/MeuClosetPage';
+import ConversionDashboardPage from './pages/ConversionDashboard';
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/brand-rules" element={<BrandRulesPage />} />
               <Route path="/ai-learning" element={<AILearningPage />} />
               <Route path="/meu-closet" element={<MeuClosetPage />} />
+              <Route path="/conversion-dashboard" element={<ConversionDashboardPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
