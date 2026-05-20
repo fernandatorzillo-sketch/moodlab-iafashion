@@ -1,10 +1,12 @@
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from core.config import settings
 
@@ -61,13 +63,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Adicione aqui o domínio Render do seu frontend quando souber
-# ex: "https://moodlab-frontend.onrender.com"
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "https://closet-moodlab.onrender.com",
     "https://homologaguadecoco.myvtex.com",
     "https://www.aguadecoco.com.br",
     "https://aguadecoco.com.br",
@@ -111,19 +112,25 @@ app.include_router(stock_router)
 app.include_router(aihub_router)
 app.include_router(health_router)
 
+# ── Arquivos estáticos públicos (widget JS, assets) ───────────────────────────
 app.mount("/public", StaticFiles(directory="public"), name="public")
 
+# ── Frontend React (SPA) ──────────────────────────────────────────────────────
+DIST_DIR = Path(__file__).parent / "dist"
 
-@app.get("/")
-async def root():
-    return {"message": "MoodLab API is running", "version": "2.0.0"}
+if DIST_DIR.exists():
+    # Serve assets estáticos do build (JS, CSS, imagens)
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="spa-assets")
 
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def favicon():
+        return FileResponse(str(DIST_DIR / "favicon.svg"))
 
-@app.get("/health")
-async def health():
-    return {
-        "status": "ok",
-        "timestamp": datetime.utcnow().isoformat(),
-        "app": settings.app_name,
-        "version": settings.version,
-    }
+    # Catch-all: qualquer rota não reconhecida pelo FastAPI devolve o index.html
+    # Isso permite que o React Router gerencie /conversion-dashboard, /catalogo, etc.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        index = DIST_DIR / "index.html"
+        if index.exists():
+            return FileResponse(str(index))
+        return {"detail": "Frontend não encontrado. Execute o build do React."}
