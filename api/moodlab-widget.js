@@ -1,816 +1,637 @@
 (function () {
-  const API_BASE = "https://closet-moodlab.onrender.com";
-  const REQUEST_TIMEOUT_MS = 15000;
-
-  const BRAND = {
-    accent: "#b7a56a",
-    accentDark: "#9f8e58",
-    border: "#e9e1d2",
-    bgSoft: "#fbf8f1",
-    text: "#2b2b2b",
-    textSoft: "#6f6558",
-    error: "#b94a48",
-    white: "#ffffff",
-    shadow: "0 12px 32px rgba(0,0,0,0.10)",
-    radius: "16px",
+  const CONFIG = {
+    API_BASE:
+      (window.MOODLAB_CLOSET_CONFIG && window.MOODLAB_CLOSET_CONFIG.API_BASE) ||
+      "https://closet-moodlab.onrender.com",
+    ROOT_ID: "moodlab-account-closet-root",
+    TITLE: "Seu Closet",
+    SUBTITLE: "Suas peças, combinações e sugestões em um só lugar.",
   };
 
-  function log(...args) {
-    console.log("[MoodLab Widget]", ...args);
+  function safeText(value) {
+    return value == null ? "" : String(value);
   }
 
-  function normalizeText(value) {
-    return String(value || "")
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+  function escapeHtml(str) {
+    return safeText(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function getLoggedEmail() {
-    try {
-      const checkoutEmail =
-        window.vtexjs &&
-        window.vtexjs.checkout &&
-        window.vtexjs.checkout.orderForm &&
-        window.vtexjs.checkout.orderForm.clientProfileData &&
-        window.vtexjs.checkout.orderForm.clientProfileData.email;
-
-      if (checkoutEmail) return String(checkoutEmail).trim().toLowerCase();
-
-      const sessionEmail =
-        window.__RUNTIME__ &&
-        window.__RUNTIME__.session &&
-        window.__RUNTIME__.session.email;
-
-      if (sessionEmail) return String(sessionEmail).trim().toLowerCase();
-    } catch (e) {
-      console.error("Erro ao capturar email logado:", e);
-    }
-
-    return TEST_EMAIL;
-  }
-
-  function fetchWithTimeout(url, options = {}, timeout = REQUEST_TIMEOUT_MS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-
-    return fetch(url, {
-      ...options,
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timer));
-  }
-
-  async function apiGet(path) {
-    const response = await fetchWithTimeout(`${API_BASE}${path}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `Erro ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  async function apiPost(path, payload) {
-    const response = await fetchWithTimeout(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `Erro ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  function ensureRoot() {
-    let root = document.getElementById("moodlab-widget-root");
-    if (root) return root;
-
-    root = document.createElement("div");
-    root.id = "moodlab-widget-root";
-    document.body.appendChild(root);
-    return root;
-  }
-
-  function createStyles() {
-    if (document.getElementById("moodlab-widget-styles")) return;
+  function injectStyles() {
+    if (document.getElementById("moodlab-account-closet-styles")) return;
 
     const style = document.createElement("style");
-    style.id = "moodlab-widget-styles";
+    style.id = "moodlab-account-closet-styles";
     style.innerHTML = `
-      #moodlab-widget-root {
-        font-family: Arial, Helvetica, sans-serif;
+      #${CONFIG.ROOT_ID} {
+        max-width: 1440px;
+        margin: 8px auto 32px;
+        padding: 0 24px;
+        font-family: Arial, sans-serif;
       }
 
-      .mlw-floating {
-        position: fixed;
-        right: 20px;
-        bottom: 110px;
-        z-index: 999999;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
+      .ml-closet-shell {
+        background: #fff;
+        border: 1px solid #e9dfcf;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.03);
       }
 
-      .mlw-btn {
-        appearance: none;
-        border: none;
-        cursor: pointer;
-        transition: all .2s ease;
+      .ml-closet-header h1 {
+        margin: 0 0 8px 0;
+        font-size: 34px;
+        line-height: 1.1;
+        color: #2f2a24;
       }
 
-      .mlw-fab-btn {
-        background: ${BRAND.accent};
-        color: ${BRAND.white};
-        border-radius: 999px;
-        padding: 14px 20px;
+      .ml-closet-header p {
+        margin: 0;
+        color: #7a6f63;
         font-size: 15px;
-        font-weight: 600;
-        box-shadow: ${BRAND.shadow};
-        min-width: 220px;
       }
 
-      .mlw-fab-btn:hover {
-        background: ${BRAND.accentDark};
-        transform: translateY(-1px);
-      }
-
-      .mlw-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,.28);
-        z-index: 999998;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity .2s ease;
-      }
-
-      .mlw-overlay.open {
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      .mlw-drawer {
-        position: fixed;
-        top: 0;
-        right: 0;
-        width: min(460px, 92vw);
-        height: 100vh;
-        background: ${BRAND.white};
-        z-index: 999999;
-        box-shadow: -10px 0 30px rgba(0,0,0,.12);
-        transform: translateX(100%);
-        transition: transform .25s ease;
+      .ml-closet-stats {
         display: flex;
-        flex-direction: column;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 24px 0 28px;
       }
 
-      .mlw-drawer.open {
-        transform: translateX(0);
+      .ml-stat {
+        min-width: 150px;
+        background: #faf7f2;
+        border: 1px solid #eadfce;
+        border-radius: 14px;
+        padding: 14px 16px;
       }
 
-      .mlw-header {
-        padding: 24px 24px 16px;
-        border-bottom: 1px solid ${BRAND.border};
+      .ml-stat-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #9a8f83;
+        margin-bottom: 6px;
       }
 
-      .mlw-title {
-        font-size: 20px;
+      .ml-stat-value {
+        font-size: 22px;
+        color: #2f2a24;
         font-weight: 700;
-        color: ${BRAND.text};
-        margin: 0 0 10px 0;
       }
 
-      .mlw-close {
-        background: transparent;
-        color: ${BRAND.textSoft};
-        font-size: 15px;
-        padding: 0;
+      .ml-section {
+        margin-top: 32px;
       }
 
-      .mlw-close:hover {
-        color: ${BRAND.text};
+      .ml-section h2 {
+        margin: 0 0 14px;
+        font-size: 24px;
+        color: #2f2a24;
       }
 
-      .mlw-body {
-        padding: 20px 24px 28px;
-        overflow-y: auto;
-        flex: 1;
-        background: ${BRAND.white};
+      .ml-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
       }
 
-      .mlw-loading,
-      .mlw-empty,
-      .mlw-error {
-        font-size: 16px;
-        line-height: 1.5;
-        padding: 8px 0;
+      .ml-filter-btn {
+        background: #fff;
+        border: 1px solid #d8c8af;
+        color: #7c6c52;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-size: 14px;
+        cursor: pointer;
       }
 
-      .mlw-loading,
-      .mlw-empty {
-        color: ${BRAND.textSoft};
+      .ml-filter-btn.active {
+        background: #b7a36b;
+        color: #fff;
+        border-color: #b7a36b;
       }
 
-      .mlw-error {
-        color: ${BRAND.error};
-        white-space: pre-wrap;
-      }
-
-      .mlw-grid {
+      .ml-grid {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         gap: 18px;
       }
 
-      .mlw-card {
-        border: 1px solid ${BRAND.border};
-        border-radius: ${BRAND.radius};
+      .ml-card {
+        background: #fff;
+        border: 1px solid #eadfce;
+        border-radius: 16px;
         overflow: hidden;
-        background: ${BRAND.white};
       }
 
-      .mlw-card-image {
+      .ml-card-image {
         width: 100%;
         aspect-ratio: 3 / 4;
-        background: ${BRAND.bgSoft};
+        background: #f8f3ec;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         overflow: hidden;
       }
 
-      .mlw-card-image img {
+      .ml-card-image img {
         width: 100%;
         height: 100%;
         object-fit: cover;
         display: block;
       }
 
-      .mlw-card-no-image {
-        width: 100%;
-        height: 100%;
-        min-height: 240px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: ${BRAND.textSoft};
-        font-size: 14px;
+      .ml-card-body {
+        padding: 14px;
       }
 
-      .mlw-card-content {
-        padding: 14px 14px 16px;
-      }
-
-      .mlw-chip {
-        display: inline-block;
-        margin-bottom: 8px;
+      .ml-card-category {
         font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: .04em;
-        color: ${BRAND.accentDark};
+        color: #9a8f83;
+        margin-bottom: 6px;
       }
 
-      .mlw-card-name {
-        font-size: 18px;
-        font-weight: 700;
+      .ml-card-title {
+        font-size: 16px;
         line-height: 1.35;
-        color: ${BRAND.text};
+        color: #2f2a24;
+        min-height: 44px;
         margin-bottom: 8px;
       }
 
-      .mlw-card-reason {
-        font-size: 14px;
-        color: ${BRAND.textSoft};
-        line-height: 1.45;
+      .ml-card-reason {
+        font-size: 13px;
+        color: #7a6f63;
+        line-height: 1.4;
         margin-bottom: 12px;
       }
 
-      .mlw-card-price {
-        font-size: 15px;
-        font-weight: 700;
-        color: ${BRAND.text};
-        margin-bottom: 12px;
+      .ml-card-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
       }
 
-      .mlw-link-btn {
+      .ml-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: ${BRAND.accent};
-        color: ${BRAND.white};
         text-decoration: none;
-        border-radius: 12px;
-        padding: 11px 16px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-size: 13px;
         font-weight: 600;
-        font-size: 14px;
+        cursor: pointer;
       }
 
-      .mlw-link-btn:hover {
-        background: ${BRAND.accentDark};
+      .ml-btn-primary {
+        background: #b7a36b;
+        color: #fff;
+        border: 1px solid #b7a36b;
       }
 
-      .mlw-form {
-        display: grid;
-        gap: 18px;
+      .ml-look-box {
+        border: 1px solid #eadfce;
+        border-radius: 16px;
+        padding: 18px;
+        background: #fcfaf7;
       }
 
-      .mlw-field label {
-        display: block;
-        font-size: 15px;
-        font-weight: 600;
-        color: ${BRAND.text};
-        margin-bottom: 8px;
+      .ml-look-title {
+        margin: 0 0 14px;
+        font-size: 18px;
+        color: #2f2a24;
       }
 
-      .mlw-field select {
-        width: 100%;
-        height: 56px;
-        border-radius: 12px;
-        border: 1px solid ${BRAND.border};
-        background: ${BRAND.white};
-        padding: 0 14px;
-        font-size: 16px;
-        color: ${BRAND.text};
-        outline: none;
+      .ml-empty,
+      .ml-loading,
+      .ml-error {
+        border-radius: 16px;
+        padding: 18px;
+        background: #faf7f2;
+        border: 1px solid #eadfce;
+        color: #7a6f63;
       }
 
-      .mlw-primary {
-        height: 54px;
-        border-radius: 12px;
-        background: ${BRAND.accent};
-        color: ${BRAND.white};
-        font-size: 17px;
-        font-weight: 700;
-      }
-
-      .mlw-primary:hover {
-        background: ${BRAND.accentDark};
-      }
-
-      .mlw-primary[disabled] {
-        opacity: .65;
-        cursor: not-allowed;
-      }
-
-      .mlw-subtitle {
-        font-size: 15px;
-        color: ${BRAND.textSoft};
-        line-height: 1.5;
-        margin-bottom: 18px;
-      }
-
-      .mlw-section-title {
-        font-size: 16px;
-        font-weight: 700;
-        color: ${BRAND.text};
-        margin: 0 0 14px 0;
-      }
-
-      .mlw-back {
-        margin-bottom: 16px;
-        background: transparent;
-        color: ${BRAND.accentDark};
-        font-weight: 600;
-        padding: 0;
+      .ml-error {
+        color: #a04f4f;
+        background: #fff6f6;
+        border-color: #efcaca;
       }
 
       @media (max-width: 768px) {
-        .mlw-floating {
-          right: 14px;
-          bottom: 92px;
+        #${CONFIG.ROOT_ID} {
+          padding: 0 16px;
+          margin: 8px auto 24px;
         }
 
-        .mlw-fab-btn {
-          min-width: 200px;
-          font-size: 14px;
-          padding: 13px 18px;
+        .ml-closet-shell {
+          padding: 18px;
         }
 
-        .mlw-header {
-          padding: 20px 18px 14px;
+        .ml-closet-header h1 {
+          font-size: 28px;
         }
 
-        .mlw-body {
-          padding: 18px 18px 24px;
+        .ml-grid {
+          grid-template-columns: 1fr 1fr;
         }
+      }
 
-        .mlw-card-name {
-          font-size: 17px;
+      @media (max-width: 540px) {
+        .ml-grid {
+          grid-template-columns: 1fr;
         }
       }
     `;
     document.head.appendChild(style);
   }
 
-  const state = {
-    drawerMode: null,
-    drawerOpen: false,
-    email: null,
-    questions: null,
-    mounted: false,
-  };
+  function getRoot() {
+    let root = document.getElementById(CONFIG.ROOT_ID);
+    if (!root) {
+      root = document.createElement("div");
+      root.id = CONFIG.ROOT_ID;
+      const target =
+        document.querySelector(".account__container.container") ||
+        document.querySelector(".account__main") ||
+        document.querySelector(".account-main") ||
+        document.querySelector(".account") ||
+        document.querySelector(".container") ||
+        document.body;
+      target.appendChild(root);
+    }
+    return root;
+  }
 
-  function currency(value) {
-    const number = Number(value || 0);
-    if (!number) return "";
+  function renderLoading(root) {
+    root.innerHTML = `
+      <div class="ml-closet-shell">
+        <div class="ml-loading">Carregando seu closet...</div>
+      </div>
+    `;
+  }
+
+  function renderError(root, message) {
+    root.innerHTML = `
+      <div class="ml-closet-shell">
+        <div class="ml-error">
+          <strong>Não foi possível carregar seu closet.</strong><br />
+          ${escapeHtml(message || "Tente novamente em instantes.")}
+        </div>
+      </div>
+    `;
+  }
+
+  function isValidEmail(str) {
+    return typeof str === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(str.trim());
+  }
+
+  function getLoggedEmailSync() {
     try {
-      return number.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      });
-    } catch {
-      return `R$ ${number.toFixed(2)}`;
-    }
-  }
+      const fromCheckout =
+        window.vtexjs &&
+        window.vtexjs.checkout &&
+        window.vtexjs.checkout.orderForm &&
+        window.vtexjs.checkout.orderForm.clientProfileData &&
+        window.vtexjs.checkout.orderForm.clientProfileData.email;
+      if (isValidEmail(fromCheckout)) return String(fromCheckout).trim();
 
-  function createElement(tag, className, html) {
-    const el = document.createElement(tag);
-    if (className) el.className = className;
-    if (html !== undefined) el.innerHTML = html;
-    return el;
-  }
+      const fromTheme =
+        window.aguadecoco &&
+        (window.aguadecoco.userEmail || window.aguadecoco.email ||
+         (window.aguadecoco.user && window.aguadecoco.user.email));
+      if (isValidEmail(fromTheme)) return String(fromTheme).trim();
 
-  function getOrCreateOverlay(root) {
-    let overlay = root.querySelector(".mlw-overlay");
-    if (overlay) return overlay;
+      if (isValidEmail(window.janus_app_user_email)) return String(window.janus_app_user_email).trim();
 
-    overlay = createElement("div", "mlw-overlay");
-    overlay.addEventListener("click", closeDrawer);
-    root.appendChild(overlay);
-    return overlay;
-  }
+      const metaEmail = document.querySelector('meta[name="user-email"], [data-user-email]');
+      if (metaEmail) {
+        const val = metaEmail.getAttribute("content") || metaEmail.getAttribute("data-user-email");
+        if (isValidEmail(val)) return val.trim();
+      }
 
-  function getOrCreateDrawer(root) {
-    let drawer = root.querySelector(".mlw-drawer");
-    if (drawer) return drawer;
+      const pageText = document.body ? document.body.innerText : "";
+      const emailRegex = /\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/gi;
+      let m;
+      while ((m = emailRegex.exec(pageText)) !== null) {
+        const candidate = m[0].trim().toLowerCase();
+        if (
+          !candidate.includes("vtex.com.br") &&
+          !candidate.includes("@aguadecoco.com.br") &&
+          !candidate.includes("@sentry") &&
+          !candidate.includes("@facebook") &&
+          !candidate.includes("@google") &&
+          !candidate.includes("@pinterest") &&
+          isValidEmail(candidate)
+        ) {
+          return candidate;
+        }
+      }
 
-    drawer = createElement("div", "mlw-drawer");
-
-    const header = createElement("div", "mlw-header");
-    const title = createElement("h2", "mlw-title");
-    title.id = "mlw-drawer-title";
-
-    const close = createElement("button", "mlw-btn mlw-close", "Fechar");
-    close.type = "button";
-    close.addEventListener("click", closeDrawer);
-
-    header.appendChild(title);
-    header.appendChild(close);
-
-    const body = createElement("div", "mlw-body");
-    body.id = "mlw-drawer-body";
-
-    drawer.appendChild(header);
-    drawer.appendChild(body);
-    root.appendChild(drawer);
-    return drawer;
-  }
-
-  function setDrawerTitle(text) {
-    const title = document.getElementById("mlw-drawer-title");
-    if (title) title.textContent = text;
-  }
-
-  function setDrawerContent(node) {
-    const body = document.getElementById("mlw-drawer-body");
-    if (!body) return;
-    body.innerHTML = "";
-    body.appendChild(node);
-  }
-
-  function openDrawer(mode) {
-    state.drawerMode = mode;
-    state.drawerOpen = true;
-
-    const root = ensureRoot();
-    const overlay = getOrCreateOverlay(root);
-    const drawer = getOrCreateDrawer(root);
-
-    overlay.classList.add("open");
-    drawer.classList.add("open");
-  }
-
-  function closeDrawer() {
-    state.drawerOpen = false;
-
-    const root = ensureRoot();
-    const overlay = root.querySelector(".mlw-overlay");
-    const drawer = root.querySelector(".mlw-drawer");
-
-    if (overlay) overlay.classList.remove("open");
-    if (drawer) drawer.classList.remove("open");
-  }
-
-  function ensureFloatingButtons(root) {
-    let floating = root.querySelector(".mlw-floating");
-    if (floating) return floating;
-
-    floating = createElement("div", "mlw-floating");
-
-    const purchasesBtn = createElement(
-      "button",
-      "mlw-btn mlw-fab-btn",
-      "Com base nas suas compras"
-    );
-    purchasesBtn.type = "button";
-    purchasesBtn.addEventListener("click", handleOpenPurchases);
-
-    const lookBtn = createElement(
-      "button",
-      "mlw-btn mlw-fab-btn",
-      "Monte seu look"
-    );
-    lookBtn.type = "button";
-    lookBtn.addEventListener("click", handleOpenLookBuilder);
-
-    floating.appendChild(purchasesBtn);
-    floating.appendChild(lookBtn);
-    root.appendChild(floating);
-
-    return floating;
-  }
-
-  function buildLoading(message = "Carregando...") {
-    return createElement("div", "mlw-loading", message);
-  }
-
-  function buildError(message) {
-    return createElement("div", "mlw-error", message);
-  }
-
-  function buildEmpty(message) {
-    return createElement("div", "mlw-empty", message);
-  }
-
-  function recommendationCard(item) {
-    const card = createElement("div", "mlw-card");
-
-    const imageWrap = createElement("div", "mlw-card-image");
-    const imgUrl = item.imagem_url || item.image_url || "";
-    if (imgUrl) {
-      const img = document.createElement("img");
-      img.src = imgUrl;
-      img.alt = item.nome || "Produto";
-      imageWrap.appendChild(img);
-    } else {
-      imageWrap.appendChild(
-        createElement("div", "mlw-card-no-image", "Sem imagem")
-      );
-    }
-
-    const content = createElement("div", "mlw-card-content");
-    const chip = createElement(
-      "div",
-      "mlw-chip",
-      (item.categoria || item.departamento || "Sugestão").replaceAll("_", " ")
-    );
-    const name = createElement("div", "mlw-card-name", item.nome || "Produto");
-    const reason = createElement(
-      "div",
-      "mlw-card-reason",
-      item.motivo || "Selecionado para você"
-    );
-    const priceText = currency(item.price);
-    const price = priceText
-      ? createElement("div", "mlw-card-price", priceText)
-      : null;
-
-    const link = document.createElement("a");
-    link.className = "mlw-link-btn";
-    link.href = item.link_produto || "#";
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Ver produto";
-
-    content.appendChild(chip);
-    content.appendChild(name);
-    content.appendChild(reason);
-    if (price) content.appendChild(price);
-    content.appendChild(link);
-
-    card.appendChild(imageWrap);
-    card.appendChild(content);
-    return card;
-  }
-
-  function renderRecommendationsView(title, recommendations, subtitleText) {
-    setDrawerTitle(title);
-
-    const container = document.createElement("div");
-
-    if (subtitleText) {
-      const subtitle = createElement("div", "mlw-subtitle", subtitleText);
-      container.appendChild(subtitle);
-    }
-
-    if (!recommendations || !recommendations.length) {
-      container.appendChild(
-        buildEmpty("Nenhuma recomendação encontrada para esse perfil.")
-      );
-      setDrawerContent(container);
-      return;
-    }
-
-    const grid = createElement("div", "mlw-grid");
-    recommendations.forEach((item) => {
-      grid.appendChild(recommendationCard(item));
-    });
-
-    container.appendChild(grid);
-    setDrawerContent(container);
-  }
-
-  async function handleOpenPurchases() {
-    try {
-      const email = getLoggedEmail();
-      state.email = email;
-
-      openDrawer("purchases");
-      setDrawerTitle("Com base nas suas compras");
-      setDrawerContent(buildLoading("Buscando sugestões personalizadas..."));
-
-      const data = await apiPost("/api/v1/customer-closet/recommendations", {
-        email,
-        answers: {
-          ocasiao: "praia",
-          objetivo: "completar_look",
-          estilo: "elegante",
-        },
-        limit: 8,
-      });
-
-      log("Recommendations purchases:", data);
-
-      renderRecommendationsView(
-        "Com base nas suas compras",
-        data.recommendations || [],
-        "Sugestões compatíveis com o seu histórico e com o seu perfil de compra."
-      );
+      return "";
     } catch (e) {
-      console.error("Erro ao carregar recomendações por compras:", e);
-      setDrawerTitle("Com base nas suas compras");
-      setDrawerContent(
-        buildError(
-          `Não foi possível carregar recomendações.\n\n${
-            e && e.message ? e.message : String(e)
-          }`
-        )
-      );
+      return "";
     }
   }
 
-  function buildQuestionsForm(questions) {
-    const wrapper = document.createElement("div");
-
-    const subtitle = createElement(
-      "div",
-      "mlw-subtitle",
-      "Responda rapidamente e eu sugiro peças mais alinhadas com a ocasião e seu objetivo."
-    );
-    wrapper.appendChild(subtitle);
-
-    const form = createElement("div", "mlw-form");
-
-    questions.forEach((question) => {
-      const field = createElement("div", "mlw-field");
-      const label = document.createElement("label");
-      label.textContent = question.label || question.id;
-
-      const select = document.createElement("select");
-      select.name = question.id;
-
-      (question.options || []).forEach((option) => {
-        const el = document.createElement("option");
-        el.value = option.value;
-        el.textContent = option.label;
-        select.appendChild(el);
+  async function getEmailFromSession() {
+    try {
+      const res = await fetch("/api/sessions?items=profile.email", {
+        credentials: "include",
+        headers: { Accept: "application/json" },
       });
+      if (!res.ok) return "";
+      const data = await res.json();
+      const email =
+        data &&
+        data.namespaces &&
+        data.namespaces.profile &&
+        data.namespaces.profile.email &&
+        data.namespaces.profile.email.value;
+      if (isValidEmail(email)) return String(email).trim();
+      return "";
+    } catch (e) {
+      return "";
+    }
+  }
 
-      field.appendChild(label);
-      field.appendChild(select);
-      form.appendChild(field);
+  async function waitForEmail(maxAttempts, delayMs) {
+    const sessionEmail = await getEmailFromSession();
+    if (sessionEmail) return sessionEmail;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const email = getLoggedEmailSync();
+      if (email) return email;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return "";
+  }
+
+  async function fetchClosetData(email) {
+    const response = await fetch(`${CONFIG.API_BASE}/api/v1/customer-closet/lookup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ email: email }),
     });
 
-    const submit = createElement("button", "mlw-btn mlw-primary", "Ver sugestões");
-    submit.type = "button";
+    const text = await response.text();
 
-    submit.addEventListener("click", async () => {
-      try {
-        submit.disabled = true;
-        submit.textContent = "Montando sugestões...";
+    if (!response.ok) {
+      throw new Error(text || `HTTP ${response.status}`);
+    }
 
-        const answers = {};
-        form.querySelectorAll("select").forEach((select) => {
-          answers[select.name] = select.value;
-        });
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error("Resposta inválida da API.");
+    }
+  }
 
-        setDrawerTitle("Monte seu look");
-        setDrawerContent(buildLoading("Montando sugestões..."));
+  function normalizeApiData(raw) {
+    const customer =
+      raw.customer ||
+      (raw.cliente
+        ? {
+            name: raw.cliente.nome || raw.cliente.name || "Cliente",
+            email: raw.cliente.email || "",
+          }
+        : {
+            name: "Cliente",
+            email: "",
+          });
 
-        const email = getLoggedEmail();
-        state.email = email;
+    const closet = raw.closet || raw.closet_products || [];
+    const looks = raw.looks || [];
+    const recommendations = raw.recommendations || [];
 
-        const data = await apiPost("/api/v1/customer-closet/recommendations", {
-          email,
-          answers,
-          limit: 8,
-        });
+    return {
+      customer: customer,
+      closet: Array.isArray(closet) ? closet : [],
+      looks: Array.isArray(looks) ? looks : [],
+      recommendations: Array.isArray(recommendations) ? recommendations : [],
+      found: raw.found,
+      debug: raw.debug || {},
+    };
+  }
 
-        log("Recommendations look builder:", data);
+  function buildStats(data) {
+    const closetCount = Array.isArray(data.closet) ? data.closet.length : 0;
+    const looksCount = Array.isArray(data.looks) ? data.looks.length : 0;
+    const recsCount = Array.isArray(data.recommendations) ? data.recommendations.length : 0;
 
-        renderRecommendationsView(
-          "Monte seu look",
-          data.recommendations || [],
-          "Sugestões com base na ocasião, objetivo e estilo que você escolheu."
-        );
-      } catch (e) {
-        console.error("Erro ao montar look:", e);
-        setDrawerTitle("Monte seu look");
-        setDrawerContent(
-          buildError(
-            `Não foi possível carregar recomendações.\n\n${
-              e && e.message ? e.message : String(e)
-            }`
+    const categories = new Set(
+      (data.closet || [])
+        .map((i) => safeText(i.category || i.categoria || i.department))
+        .filter(Boolean)
+    );
+
+    return `
+      <div class="ml-closet-stats">
+        <div class="ml-stat"><div class="ml-stat-label">Peças</div><div class="ml-stat-value">${closetCount}</div></div>
+        <div class="ml-stat"><div class="ml-stat-label">Categorias</div><div class="ml-stat-value">${categories.size}</div></div>
+        <div class="ml-stat"><div class="ml-stat-label">Looks</div><div class="ml-stat-value">${looksCount}</div></div>
+        <div class="ml-stat"><div class="ml-stat-label">Sugestões</div><div class="ml-stat-value">${recsCount}</div></div>
+      </div>
+    `;
+  }
+
+  function buildCard(item, showReason) {
+    const category = escapeHtml(item.category || item.categoria || item.department || "");
+    const title = escapeHtml(item.name || item.nome || "Produto");
+    const reason = escapeHtml(item.reason || "");
+    const rawImageUrl = item.image_url || item.imagem_url || "";
+    // lojaaguadecoco.vteximg.com.br é o domínio correto da Água de Coco na VTEX.
+    // Não alterar o domínio. Apenas normaliza o tamanho da imagem para 500x500.
+    const imageUrl = rawImageUrl
+      .replace(/\/arquivos\/ids\/(\d+)(?:-\d+-\d+)?(\/[^?#]*)/, "/arquivos/ids/$1-500-500$2");
+    const placeholderSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='267' viewBox='0 0 200 267'%3E%3Crect width='200' height='267' fill='%23f3ede4'/%3E%3Ctext x='100' y='140' font-family='Arial' font-size='12' fill='%23b0a090' text-anchor='middle'%3ESem imagem%3C/text%3E%3C/svg%3E`;
+    // Usa proxy server-side para imagens VTEX (evita bloqueios cross-origin).
+    // Ambos os domínios lojaaguadecoco e aguadecoco são válidos para a Água de Coco.
+    const isVtexImage = imageUrl && (
+      imageUrl.includes("lojaaguadecoco.vteximg.com.br") ||
+      imageUrl.includes("aguadecoco.vteximg.com.br") ||
+      imageUrl.includes("vtexassets.com")
+    );
+    const finalImageUrl = isVtexImage
+      ? `${CONFIG.API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(imageUrl)}`
+      : imageUrl;
+    const image = finalImageUrl
+      ? `<img src="${escapeHtml(finalImageUrl)}" alt="${title}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderSvg}';" />`
+      : `<img src="${placeholderSvg}" alt="Sem imagem" />`
+    const url = item.url || item.link_produto || "#";
+
+    return `
+      <div class="ml-card">
+        <div class="ml-card-image">${image}</div>
+        <div class="ml-card-body">
+          <div class="ml-card-category">${category}</div>
+          <div class="ml-card-title">${title}</div>
+          ${showReason ? `<div class="ml-card-reason">${reason}</div>` : ""}
+          <div class="ml-card-actions">
+            <a class="ml-btn ml-btn-primary" href="${escapeHtml(url)}">Ver produto</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function buildClosetSection(closet) {
+    const items = Array.isArray(closet) ? closet : [];
+    const categories = ["Todos"].concat(
+      Array.from(
+        new Set(
+          items
+            .map((item) => safeText(item.category || item.categoria || item.department))
+            .filter(Boolean)
+        )
+      )
+    );
+
+    return `
+      <div class="ml-section" id="ml-closet-section">
+        <h2>Meu Closet</h2>
+        <div class="ml-filters" id="ml-closet-filters">
+          ${categories
+            .map(
+              (category, index) => `
+                <button class="ml-filter-btn ${index === 0 ? "active" : ""}" data-category="${escapeHtml(category)}" type="button">
+                  ${escapeHtml(category)}
+                </button>`
+            )
+            .join("")}
+        </div>
+        <div class="ml-grid" id="ml-closet-grid">
+          ${
+            items.length
+              ? items
+                  .map(
+                    (item) => `
+                    <div class="ml-closet-item" data-category="${escapeHtml(item.category || item.categoria || item.department || "")}">
+                      ${buildCard(item, false)}
+                    </div>`
+                  )
+                  .join("")
+              : `<div class="ml-empty">Nenhuma peça encontrada no closet.</div>`
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  function buildLooksSection(looks) {
+    const list = Array.isArray(looks) ? looks : [];
+    if (!list.length) {
+      return `<div class="ml-section"><h2>Looks sugeridos</h2><div class="ml-empty">Ainda não encontramos combinações suficientes para montar looks.</div></div>`;
+    }
+
+    return `
+      <div class="ml-section">
+        <h2>Looks sugeridos</h2>
+        ${list
+          .map(
+            (look) => `
+            <div class="ml-look-box" style="margin-bottom:16px;">
+              <h3 class="ml-look-title">${escapeHtml(look.title || "Look sugerido")}</h3>
+              <div class="ml-grid">
+                ${(look.items || []).map((item) => buildCard(item, false)).join("")}
+              </div>
+            </div>`
           )
-        );
-      }
+          .join("")}
+      </div>
+    `;
+  }
+
+  function buildRecommendationsSection(recommendations) {
+    const items = Array.isArray(recommendations) ? recommendations : [];
+
+    return `
+      <div class="ml-section">
+        <h2>Recomendações para você</h2>
+        ${
+          items.length
+            ? `<div class="ml-grid">${items.map((item) => buildCard(item, true)).join("")}</div>`
+            : `<div class="ml-empty">Sem recomendações no momento.</div>`
+        }
+      </div>
+    `;
+  }
+
+  function attachClosetFilters(root) {
+    const filterWrap = root.querySelector("#ml-closet-filters");
+    const grid = root.querySelector("#ml-closet-grid");
+    if (!filterWrap || !grid) return;
+
+    filterWrap.addEventListener("click", function (event) {
+      const btn = event.target.closest(".ml-filter-btn");
+      if (!btn) return;
+
+      const category = btn.getAttribute("data-category") || "Todos";
+
+      filterWrap.querySelectorAll(".ml-filter-btn").forEach((node) => node.classList.remove("active"));
+      btn.classList.add("active");
+
+      grid.querySelectorAll(".ml-closet-item").forEach((item) => {
+        const itemCategory = item.getAttribute("data-category") || "";
+        const show = category === "Todos" || itemCategory === category;
+        item.style.display = show ? "" : "none";
+      });
     });
-
-    wrapper.appendChild(form);
-    wrapper.appendChild(submit);
-    return wrapper;
   }
 
-  async function handleOpenLookBuilder() {
+  function renderAccountCloset(root, rawData) {
+    const data = normalizeApiData(rawData);
+    const customerName = safeText(data.customer && data.customer.name) || "Cliente";
+
+    root.innerHTML = `
+      <div class="ml-closet-shell">
+        <div class="ml-closet-header">
+          <h1>${CONFIG.TITLE}</h1>
+          <p>${CONFIG.SUBTITLE}</p>
+          <p style="margin-top:8px;"><strong>${escapeHtml(customerName)}</strong></p>
+        </div>
+        ${buildStats(data)}
+        ${buildClosetSection(data.closet)}
+        ${buildLooksSection(data.looks)}
+        ${buildRecommendationsSection(data.recommendations)}
+      </div>
+    `;
+
+    attachClosetFilters(root);
+  }
+
+  async function bootstrap() {
+    injectStyles();
+    const root = getRoot();
+    renderLoading(root);
+
     try {
-      openDrawer("look-builder");
-      setDrawerTitle("Monte seu look");
-      setDrawerContent(buildLoading("Carregando perguntas..."));
-
-      let questions = state.questions;
-      if (!questions) {
-        const response = await apiGet("/api/v1/customer-closet/questions");
-        questions = response.questions || [];
-        state.questions = questions;
-      }
-
-      setDrawerTitle("Monte seu look");
-      setDrawerContent(buildQuestionsForm(questions));
-    } catch (e) {
-      console.error("Erro ao carregar formulário do look:", e);
-      setDrawerTitle("Monte seu look");
-      setDrawerContent(
-        buildError(
-          `Não foi possível carregar as perguntas.\n\n${
-            e && e.message ? e.message : String(e)
-          }`
-        )
-      );
-    }
-  }
-
-  function mount() {
-    if (state.mounted) return;
-    state.mounted = true;
-
-    const root = ensureRoot();
-    createStyles();
-    ensureFloatingButtons(root);
-    getOrCreateOverlay(root);
-    getOrCreateDrawer(root);
-
-    log("Widget iniciado");
-  }
-
-  function waitForBody(maxAttempts = 40, delay = 500) {
-    let attempts = 0;
-
-    const interval = setInterval(() => {
-      attempts += 1;
-
-      if (document.body) {
-        clearInterval(interval);
-        mount();
+      const email = await waitForEmail(20, 1000);
+      if (!email) {
+        renderError(root, "Não foi possível identificar o cliente logado.");
         return;
       }
 
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-      }
-    }, delay);
+      const data = await fetchClosetData(email);
+      renderAccountCloset(root, data);
+    } catch (error) {
+      renderError(root, error && error.message ? error.message : "Erro inesperado.");
+    }
   }
 
-  waitForBody();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootstrap);
+  } else {
+    bootstrap();
+  }
 })();

@@ -1,189 +1,137 @@
-from typing import Any
+import asyncio
+
+print("1. arquivo sync_catalog_incremental carregado")
+
+from models.catalog_product import CatalogProduct
+from services.closet_db import AsyncSessionLocal, init_closet_db
+from services.sync_control_service import mark_sync_error, mark_sync_success
+from services.vtex_catalog_service import (
+    fetch_product_and_sku_ids,
+    fetch_product_by_id,
+    fetch_sku_by_id,
+)
+
+print("2. imports concluídos")
+
+JOB_NAME = "catalog_incremental"
 
 
-def normalize_text(value: Any) -> str:
-    return str(value or "").strip().lower()
+def extract_first_spec(product_data: dict, keys: list[str]) -> str | None:
+    specs = product_data.get("SpecificationGroups") or []
+    wanted = {k.lower() for k in keys}
+
+    for group in specs:
+        for field in group.get("Specifications", []) or []:
+            name = str(field.get("Name") or "").strip().lower()
+            if name in wanted:
+                values = field.get("Values") or []
+                if values:
+                    return str(values[0]).strip()
+    return None
 
 
-def get_field(item: dict[str, Any], *keys: str, default: Any = "") -> Any:
-    for key in keys:
-        if key in item and item.get(key) not in [None, ""]:
-            return item.get(key)
-    return default
+async def run() -> None:
+    print("3. run iniciou")
+    await init_closet_db()
+    print("4. banco inicializado")
 
+    async with AsyncSessionLocal() as session:
+        print("5. sessão aberta")
+        try:
+            start = 0
+            page_size = 100
+            total_upserts = 0
 
-def item_text(item: dict[str, Any]) -> str:
-    return normalize_text(
-        " ".join(
-            [
-                str(get_field(item, "name", "nome", default="")),
-                str(get_field(item, "category", "categoria", default="")),
-                str(get_field(item, "department", "departamento", default="")),
-                str(get_field(item, "product_type", "tipo_produto", default="")),
-                str(get_field(item, "occasion", "ocasiao", default="")),
-                str(get_field(item, "collection", "colecao", default="")),
-            ]
-        )
-    )
+            print(f"6. início do loop | start={start} | page_size={page_size}")
 
+            while True:
+                print(f"7. buscando faixa catálogo: {start} até {start + page_size - 1}")
+                payload = fetch_product_and_sku_ids(start, start + page_size - 1)
+                print("8. payload recebido de fetch_product_and_sku_ids")
 
-def product_type_of(item: dict[str, Any]) -> str:
-    text = item_text(item)
+                data = payload.get("data") or {}
+                print(f"9. quantidade de products na faixa: {len(data)}")
 
-    if any(x in text for x in ["biquini", "biquíni", "sutiã", "sutia", "calcinha"]):
-        return "biquini"
+                if not data:
+                    print("10. sem dados, encerrando loop")
+                    break
 
-    if any(x in text for x in ["maiô", "maio"]):
-        return "maio"
+                for product_id, sku_ids in data.items():
+                    try:
+                        print(f"11. processando product_id={product_id}")
 
-    if any(x in text for x in ["saída", "saida", "pareô", "pareo"]):
-        return "saida"
+                        product = fetch_product_by_id(str(product_id))
+                        print(f"12. product carregado | product_id={product_id}")
 
-    if "vestido" in text:
-        return "vestido"
+                        first_sku = None
+                        sku_list = sku_ids or []
+                        if sku_list:
+                            print(f"13. sku principal encontrado | sku_id={sku_list[0]}")
+                            first_sku = fetch_sku_by_id(str(sku_list[0]))
+                            print(f"14. sku carregado | sku_id={sku_list[0]}")
+                        else:
+                            print(f"13. sem sku_list para product_id={product_id}")
 
-    if any(x in text for x in ["short", "calça", "calca", "pantalona", "saia"]):
-        return "bottom"
+                        row = await session.get(CatalogProduct, str(product_id))
+                        if not row:
+                            row = CatalogProduct(product_id=str(product_id))
+                            session.add(row)
+                            print(f"15. novo CatalogProduct criado | product_id={product_id}")
+                        else:
+                            print(f"15. CatalogProduct existente | product_id={product_id}")
 
-    if any(x in text for x in ["camisa", "camiseta", "blusa", "top", "cropped", "body"]):
-        return "top"
+                        row.ref_id = str(product.get("RefId") or "") or None
+                        row.sku_id = str(first_sku.get("Id") or "") if first_sku else None
+                        row.name = product.get("Name")
+                        row.brand = product.get("BrandName")
+                        row.department = product.get("DepartmentName")
+                        row.category = product.get("CategoryName")
+                        row.product_type = extract_first_spec(product, ["tipo de produto", "tipo"])
+                        row.occasion = extract_first_spec(product, ["ocasião", "ocasiao"])
+                        row.color = extract_first_spec(product, ["cor", "cores"])
+                        row.print_name = extract_first_spec(product, ["estamparia"])
+                        row.size = extract_first_spec(product, ["tamanho"])
+                        row.gender = extract_first_spec(product, ["gênero", "genero"])
+                        row.collection = extract_first_spec(product, ["coleção", "colecao"])
+                        row.image_url = (first_sku or {}).get("ImageUrl")
+                        row.product_url = product.get("DetailUrl")
+                        row.is_active = 1
+                        row.raw_json = {
+                            "product": product,
+                            "sku": first_sku,
+                        }
 
-    if any(x in text for x in ["bolsa", "sandália", "sandalia", "chapéu", "chapeu"]):
-        return "acessorio"
+                        total_upserts += 1
 
-    return "outro"
+                        if total_upserts % 100 == 0:
+                            print(f"16. checkpoint commit | total_upserts={total_upserts}")
+                            await session.commit()
 
+                    except Exception as item_error:
+                        print(f"ERRO ao processar product_id={product_id}: {item_error}")
 
-def is_home_item(item: dict[str, Any]) -> bool:
-    text = item_text(item)
-    blocked = [
-        "bandeja",
-        "copo",
-        "taça",
-        "taca",
-        "vaso",
-        "porta",
-        "guardanapo",
-        "mesa",
-        "prato",
-        "casa",
-        "decor",
-        "home",
-        "almofada",
-        "toalha",
-        "jogo americano",
-    ]
-    return any(term in text for term in blocked)
+                start += page_size
+                print(f"17. próxima faixa | start={start}")
 
-
-def is_fashion_item(item: dict[str, Any]) -> bool:
-    return not is_home_item(item) and product_type_of(item) != "outro"
-
-
-def dedupe_by_sku(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen = set()
-    result = []
-
-    for item in items:
-        key = str(
-            get_field(item, "sku_id", "sku", "product_id", "produto_id", "id", default="")
-        ).strip()
-
-        if not key:
-            key = str(get_field(item, "name", "nome", default="")).strip()
-
-        if key and key not in seen:
-            seen.add(key)
-            result.append(item)
-
-    return result
-
-
-def make_look(title: str, occasion: str, items: list[dict[str, Any]], reason: str) -> dict[str, Any]:
-    return {
-        "title": title,
-        "titulo": title,
-        "occasion": occasion,
-        "ocasiao": occasion,
-        "items": items,
-        "produtos": items,
-        "reason": reason,
-        "motivo": reason,
-        "count": len(items),
-    }
-
-
-def build_looks(closet_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    items = dedupe_by_sku([item for item in closet_items if is_fashion_item(item)])
-
-    beachwear = [i for i in items if product_type_of(i) in {"biquini", "maio"}]
-    saidas = [i for i in items if product_type_of(i) == "saida"]
-    tops = [i for i in items if product_type_of(i) == "top"]
-    bottoms = [i for i in items if product_type_of(i) == "bottom"]
-    vestidos = [i for i in items if product_type_of(i) == "vestido"]
-    acessorios = [i for i in items if product_type_of(i) == "acessorio"]
-
-    looks = []
-
-    if beachwear:
-        look_items = [beachwear[0]]
-
-        if saidas:
-            look_items.append(saidas[0])
-
-        if acessorios:
-            look_items.append(acessorios[0])
-
-        if len(look_items) >= 1:
-            looks.append(
-                make_look(
-                    title="Look Praia",
-                    occasion="praia",
-                    items=look_items,
-                    reason="Combinação criada com peças de moda praia do seu histórico.",
-                )
+            print(f"18. marcando sucesso | total_upserts={total_upserts}")
+            await mark_sync_success(
+                session=session,
+                job_name=JOB_NAME,
+                reference_value=str(total_upserts),
+                notes=f"catalog_upserts={total_upserts}",
             )
+            await session.commit()
 
-    if tops and bottoms:
-        look_items = [tops[0], bottoms[0]]
+            print(f"19. sync_catalog_incremental concluído: {total_upserts}")
 
-        if acessorios:
-            look_items.append(acessorios[0])
+        except Exception as e:
+            print(f"ERRO GERAL no sync_catalog_incremental: {e}")
+            await session.rollback()
+            await mark_sync_error(session, JOB_NAME, notes=str(e))
+            await session.commit()
+            raise
 
-        looks.append(
-            make_look(
-                title="Look Casual",
-                occasion="dia_a_dia",
-                items=look_items,
-                reason="Combinação criada com parte de cima e parte de baixo do seu closet.",
-            )
-        )
 
-    if vestidos:
-        look_items = [vestidos[0]]
-
-        if acessorios:
-            look_items.append(acessorios[0])
-
-        looks.append(
-            make_look(
-                title="Look Resort",
-                occasion="resort",
-                items=look_items,
-                reason="Combinação criada a partir de vestido ou peça única do seu closet.",
-            )
-        )
-
-    if saidas and beachwear:
-        look_items = [beachwear[0], saidas[0]]
-
-        looks.append(
-            make_look(
-                title="Look Pós-Praia",
-                occasion="resort",
-                items=look_items,
-                reason="Combinação pensada para saída de praia ou momentos de resort.",
-            )
-        )
-
-    return looks[:6]
+if __name__ == "__main__":
+    print("20. chamando asyncio.run(run())")
+    asyncio.run(run())
