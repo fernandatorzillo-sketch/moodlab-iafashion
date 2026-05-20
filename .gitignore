@@ -3,7 +3,6 @@ venv/
 node_modules/
 build/
 __pycache__
-dist
 vite.config.ts.timestamp-*
 
 data_models/orders_vtex_24m.json
