@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -126,11 +126,13 @@ if DIST_DIR.exists():
     async def favicon():
         return FileResponse(str(DIST_DIR / "favicon.svg"))
 
-    # Catch-all: qualquer rota não reconhecida pelo FastAPI devolve o index.html
-    # Isso permite que o React Router gerencie /conversion-dashboard, /catalogo, etc.
+    # Catch-all: devolve index.html para rotas do React Router
+    # Rotas de API (/api/, /public/) são ignoradas — o FastAPI as trata normalmente
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("public/"):
+            raise HTTPException(status_code=404, detail="Not Found")
         index = DIST_DIR / "index.html"
         if index.exists():
             return FileResponse(str(index))
-        return {"detail": "Frontend não encontrado. Execute o build do React."}
+        raise HTTPException(status_code=404, detail="Frontend não encontrado. Execute o build do React.")
