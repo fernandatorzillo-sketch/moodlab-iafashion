@@ -360,70 +360,162 @@ async def track_recommendation_click(payload: dict):
 
 @router.get("/conversion-stats")
 async def get_conversion_stats():
-    """
-    Retorna métricas de conversão das recomendações para o dashboard.
-    """
+    """Métricas ricas de conversão para o dashboard."""
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
     try:
         async with AsyncSessionLocal() as s:
+
+            # ── Totais gerais ────────────────────────────────────────────
+            r = await s.execute(text("""
+                SELECT
+                  COUNT(*) as total,
+                  COUNT(DISTINCT email) as unique_users,
+                  COUNT(CASE WHEN source = 'widget_stylist_chat' THEN 1 END) as chat_sessions,
+                  COUNT(CASE WHEN source = 'widget_pdp' THEN 1 END) as pdp_clicks,
+                  COUNT(CASE WHEN clicked_at >= NOW() - INTERVAL '7 days' THEN 1 END) as last_7d,
+                  COUNT(CASE WHEN clicked_at >= NOW() - INTERVAL '1 day' THEN 1 END) as last_24h
+                FROM recommendation_clicks
+            """))
+            totals = r.fetchone()
+
+            # ── Taxa de conversão: clientes que usaram widget E compraram depois ──
+            r_conv = await s.execute(text("""
+                SELECT
+                  COUNT(DISTINCT rc.email) as widget_users,
+                  COUNT(DISTINCT o.email) as converted,
+                  COALESCE(SUM(o.total_value), 0) as revenue_after_chat,
+                  COUNT(DISTINCT o.order_id) as orders_after_chat
+                FROM recommendation_clicks rc
+                LEFT JOIN orders o ON (
+                  o.email = rc.email
+                  AND o.creation_date >= rc.clicked_at
+                  AND o.creation_date <= rc.clicked_at + INTERVAL '72 hours'
+                  AND o.status NOT IN ('canceled', 'canceling')
+                )
+                WHERE rc.source = 'widget_stylist_chat'
+            """))
+            conv = r_conv.fetchone()
+            widget_users = conv[0] or 0
+            converted = conv[1] or 0
+            revenue_after = float(conv[2] or 0)
+            orders_after = conv[3] or 0
+            conversion_rate = round((converted / widget_users * 100), 1) if widget_users > 0 else 0
+
+            # ── Ranking de clientes: uso do widget + compras ─────────────
+            r_ranking = await s.execute(text("""
+                SELECT
+                  rc.email,
+                  COUNT(DISTINCT DATE(rc.clicked_at)) as dias_de_uso,
+                  COUNT(rc.id) as total_interacoes,
+                  MAX(rc.clicked_at) as ultima_interacao,
+                  COUNT(DISTINCT o.order_id) as total_pedidos,
+                  COALESCE(SUM(o.total_value), 0) as total_gasto
+                FROM recommendation_clicks rc
+                LEFT JOIN orders o ON (
+                  o.email = rc.email
+                  AND o.status NOT IN ('canceled', 'canceling')
+                )
+                WHERE rc.source = 'widget_stylist_chat'
+                GROUP BY rc.email
+                ORDER BY total_interacoes DESC, total_gasto DESC
+                LIMIT 20
+            """))
+            ranking = []
+            for row in r_ranking.fetchall():
+                email = row[0] or ""
+                at_idx = email.find("@")
+                masked = (email[:3] + "***" + email[at_idx:]) if at_idx > 0 else email[:6] + "***"
+                ranking.append({
+                    "email": masked,
+                    "dias_de_uso": row[1],
+                    "interacoes": row[2],
+                    "ultima_interacao": str(row[3])[:10] if row[3] else "",
+                    "pedidos": row[4],
+                    "total_gasto": float(row[5] or 0),
+                })
+
+            # ── Por fonte ────────────────────────────────────────────────
             r1 = await s.execute(text("""
                 SELECT source, COUNT(*) as clicks, COUNT(DISTINCT email) as unique_users
                 FROM recommendation_clicks
-                GROUP BY source
-                ORDER BY clicks DESC
+                GROUP BY source ORDER BY clicks DESC
             """))
             by_source = [{"source": r.source, "clicks": r.clicks, "unique_users": r.unique_users}
-                         for r in r1.fetchall()]
+                        for r in r1.fetchall()]
 
+            # ── O que pedem no chat ──────────────────────────────────────
             r2 = await s.execute(text("""
-                SELECT occasion, COUNT(*) as clicks
+                SELECT occasion, COUNT(*) as cnt
                 FROM recommendation_clicks
-                WHERE occasion != ''
-                GROUP BY occasion
-                ORDER BY clicks DESC
+                WHERE source = 'widget_stylist_chat'
+                  AND occasion IS NOT NULL AND occasion != '' AND occasion != 'stylist_chat'
+                GROUP BY occasion ORDER BY cnt DESC LIMIT 10
             """))
-            by_occasion = [{"occasion": r.occasion, "clicks": r.clicks} for r in r2.fetchall()]
+            top_requests = [{"request": r.occasion, "count": r.cnt} for r in r2.fetchall()]
 
+            # ── Top produtos clicados ────────────────────────────────────
             r3 = await s.execute(text("""
-                SELECT rc.product_id, cp.name, cp.category, COUNT(*) as clicks
+                SELECT rc.product_id, COALESCE(cp.name, rc.product_id) as name,
+                       cp.category, COUNT(*) as clicks
                 FROM recommendation_clicks rc
                 LEFT JOIN catalog_products cp ON cp.product_id = rc.product_id
+                WHERE rc.product_id != 'stylist_chat'
+                  AND rc.source != 'widget_stylist_chat'
                 GROUP BY rc.product_id, cp.name, cp.category
-                ORDER BY clicks DESC
-                LIMIT 20
+                ORDER BY clicks DESC LIMIT 10
             """))
             top_products = [{"product_id": r.product_id, "name": r.name,
-                             "category": r.category, "clicks": r.clicks}
-                            for r in r3.fetchall()]
+                           "category": r.category, "clicks": r.clicks}
+                           for r in r3.fetchall()]
 
+            # ── Horários de pico ─────────────────────────────────────────
             r4 = await s.execute(text("""
-                SELECT DATE(clicked_at) as day, COUNT(*) as clicks
+                SELECT EXTRACT(HOUR FROM clicked_at AT TIME ZONE 'America/Sao_Paulo') as hora,
+                       COUNT(*) as clicks
+                FROM recommendation_clicks GROUP BY hora ORDER BY hora
+            """))
+            by_hour = [{"hour": int(r.hora), "clicks": r.clicks} for r in r4.fetchall()]
+
+            # ── Por dia últimos 30d ──────────────────────────────────────
+            r5 = await s.execute(text("""
+                SELECT DATE(clicked_at AT TIME ZONE 'America/Sao_Paulo') as day,
+                       COUNT(*) as clicks, COUNT(DISTINCT email) as users
                 FROM recommendation_clicks
                 WHERE clicked_at >= NOW() - INTERVAL '30 days'
-                GROUP BY DATE(clicked_at)
-                ORDER BY day DESC
+                GROUP BY day ORDER BY day DESC
             """))
-            by_day = [{"day": str(r.day), "clicks": r.clicks} for r in r4.fetchall()]
-
-            r5 = await s.execute(text("SELECT COUNT(*) FROM recommendation_clicks"))
-            total = r5.scalar() or 0
-
-            r6 = await s.execute(text("SELECT COUNT(DISTINCT email) FROM recommendation_clicks"))
-            unique_users = r6.scalar() or 0
+            by_day = [{"day": str(r.day), "clicks": r.clicks, "users": r.users}
+                      for r in r5.fetchall()]
 
         return {
-            "total_clicks": total,
-            "unique_users": unique_users,
+            "total_clicks": totals[0] or 0,
+            "unique_users": totals[1] or 0,
+            "chat_sessions": totals[2] or 0,
+            "pdp_clicks": totals[3] or 0,
+            "last_7d": totals[4] or 0,
+            "last_24h": totals[5] or 0,
+            "conversion_rate": conversion_rate,
+            "converted_users": converted,
+            "revenue_after_chat": revenue_after,
+            "orders_after_chat": orders_after,
+            "widget_users": widget_users,
+            "ranking": ranking,
             "by_source": by_source,
-            "by_occasion": by_occasion,
+            "top_requests": top_requests,
             "top_products": top_products,
+            "by_hour": by_hour,
             "by_day": by_day,
         }
     except Exception as e:
-        return {"total_clicks": 0, "unique_users": 0, "by_source": [],
-                "by_occasion": [], "top_products": [], "by_day": [], "error": str(e)}
+        return {"total_clicks": 0, "unique_users": 0, "chat_sessions": 0,
+                "pdp_clicks": 0, "last_7d": 0, "last_24h": 0,
+                "conversion_rate": 0, "converted_users": 0,
+                "revenue_after_chat": 0, "orders_after_chat": 0,
+                "widget_users": 0, "ranking": [],
+                "by_source": [], "top_requests": [], "top_products": [],
+                "by_hour": [], "by_day": [], "error": str(e)}
 
 
 @router.get("/debug")

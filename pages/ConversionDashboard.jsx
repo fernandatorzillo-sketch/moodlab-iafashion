@@ -1,368 +1,298 @@
-import { useState, useEffect } from 'react';
-import { client } from '@/lib/api';
-import Header from '@/components/Header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
 import {
-  MousePointerClickIcon,
-  ShoppingBagIcon,
-  TrendingUpIcon,
-  RefreshCwIcon,
-  Loader2Icon,
-  ZapIcon,
-  BarChart3Icon,
-  CalendarIcon,
-} from 'lucide-react';
-import { useEmpresa } from '@/contexts/EmpresaContext';
-import { useNavigate } from 'react-router-dom';
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, PieChart, Pie, Cell, Legend,
+} from "recharts";
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+const API_BASE = "https://closet-moodlab.onrender.com";
+const GOLD = "#b7a56a";
+const GOLD_DARK = "#9a8a52";
+const GOLD_LIGHT = "#f5ece0";
+const COLORS = ["#b7a56a","#5a8a6a","#6a7a9a","#a86a5a","#7a6a9a","#6a9a8a"];
 
-function pct(num, den) {
-  if (!den || den === 0) return '0%';
-  return ((num / den) * 100).toFixed(1) + '%';
+const SOURCE_LABELS = {
+  widget_stylist_chat: "Personal Shopper",
+  widget_pdp: "Widget Produto",
+  widget_category: "Widget Categoria",
+};
+
+function fmt(n) { return Number(n || 0).toLocaleString("pt-BR"); }
+function fmtBRL(n) {
+  return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function fmt(n) {
-  return (n ?? 0).toLocaleString('pt-BR');
-}
-
-// ─── sub-components ─────────────────────────────────────────────────────────
-
-function StatCard({ icon: Icon, label, value, sub, accent }) {
-  const colors = {
-    gold:  { bg: 'bg-[#A3966A]/10', text: 'text-[#A3966A]', border: 'border-[#A3966A]/20' },
-    green: { bg: 'bg-emerald-50',   text: 'text-emerald-600', border: 'border-emerald-100' },
-    blue:  { bg: 'bg-sky-50',       text: 'text-sky-600',     border: 'border-sky-100' },
-    slate: { bg: 'bg-slate-50',     text: 'text-slate-500',   border: 'border-slate-100' },
-  };
-  const c = colors[accent] ?? colors.slate;
-
+function KPI({ label, value, sub, icon, accent = GOLD, big = false }) {
   return (
-    <Card className={`border ${c.border} shadow-sm`}>
-      <CardContent className="p-5 flex items-start gap-4">
-        <div className={`p-2.5 rounded-xl ${c.bg}`}>
-          <Icon className={`w-5 h-5 ${c.text}`} />
-        </div>
-        <div>
-          <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">{label}</p>
-          <p className="text-2xl font-bold text-[#1A1A1A] leading-none">{value}</p>
-          {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FunnelBar({ label, value, max, color, pctLabel }) {
-  const width = max > 0 ? Math.max(4, (value / max) * 100) : 4;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between items-center text-sm">
-        <span className="text-slate-600 font-medium">{label}</span>
-        <span className="text-slate-800 font-semibold tabular-nums">
-          {fmt(value)} <span className="text-slate-400 font-normal text-xs">({pctLabel})</span>
-        </span>
-      </div>
-      <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${width}%` }}
-        />
-      </div>
+    <div style={{
+      background:"#fff", border:`1.5px solid ${accent}22`,
+      borderRadius:14, padding:"18px 20px", flex:1, minWidth:130,
+    }}>
+      <div style={{ fontSize:20, marginBottom:4 }}>{icon}</div>
+      <div style={{ fontSize:11, color:"#9a8f83", fontWeight:700,
+        textTransform:"uppercase", letterSpacing:0.8, marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize: big ? 32 : 26, fontWeight:800, color:accent, lineHeight:1 }}>{value}</div>
+      {sub && <div style={{ fontSize:11, color:"#b0a090", marginTop:4 }}>{sub}</div>}
     </div>
   );
 }
 
-function OccasionRow({ ocasiao, clicks, total }) {
-  const rate = total > 0 ? ((clicks / total) * 100).toFixed(0) : 0;
+function Section({ title, children }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
-      <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-[#A3966A]" />
-        <span className="text-sm text-slate-700 capitalize">{ocasiao || 'geral'}</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-slate-400">{fmt(total)} rec.</span>
-        <Badge variant="outline" className="text-xs border-[#A3966A]/30 text-[#895D2B]">
-          {rate}% CTR
-        </Badge>
-      </div>
+    <div style={{ background:"#fff", border:"1px solid #e8dece",
+      borderRadius:16, padding:24, marginBottom:22 }}>
+      <h2 style={{ margin:"0 0 16px", fontSize:16, color:"#2f2a24",
+        fontFamily:"Georgia,serif", display:"flex", alignItems:"center", gap:8 }}>
+        {title}
+      </h2>
+      {children}
     </div>
   );
 }
-
-// ─── main component ──────────────────────────────────────────────────────────
 
 export default function ConversionDashboard() {
-  const { empresa } = useEmpresa();
-  const navigate = useNavigate();
-
   const [data, setData] = useState(null);
-  const [clicks, setClicks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState(30); // days
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (empresa) load();
-  }, [empresa, period]);
-
-  const load = async () => {
-    setLoading(true);
+  async function load() {
+    setLoading(true); setError("");
     try {
-      // 1. recommendation_logs — geradas + clicadas
-      const logsRes = await client.apiCall.invoke({
-        url: '/api/v1/entities/recommendation_logs',
-        method: 'GET',
-        data: {
-          limit: 2000,
-          sort: '-created_at',
-          query: JSON.stringify({ empresa_id: empresa.id }),
-        },
-      });
-
-      // 2. recommendation_clicks — cliques do widget público
-      let clicksData = [];
-      try {
-        const clicksRes = await client.apiCall.invoke({
-          url: '/api/v1/entities/recommendation_clicks',
-          method: 'GET',
-          data: { limit: 2000, sort: '-clicked_at' },
-        });
-        clicksData = clicksRes?.data?.items ?? [];
-      } catch (_) {
-        // tabela pode ainda não ter endpoint dedicado — usa logs
-      }
-
-      const logs = logsRes?.data?.items ?? [];
-
-      // filtra pelo período
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - period);
-      const recent = logs.filter(l => {
-        if (!l.created_at) return true;
-        return new Date(l.created_at) >= cutoff;
-      });
-
-      // agrupa métricas
-      const total = recent.length;
-      const clicked = recent.filter(l => l.clicado).length;
-      const approved = recent.filter(l => l.aprovado_marca).length;
-
-      // por ocasião
-      const byOccasion = {};
-      for (const l of recent) {
-        const k = l.ocasiao || 'geral';
-        if (!byOccasion[k]) byOccasion[k] = { total: 0, clicked: 0 };
-        byOccasion[k].total++;
-        if (l.clicado) byOccasion[k].clicked++;
-      }
-
-      // por fonte
-      const bySource = {};
-      for (const l of recent) {
-        const k = l.fonte || 'desconhecida';
-        if (!bySource[k]) bySource[k] = 0;
-        bySource[k]++;
-      }
-
-      setData({ total, clicked, approved, byOccasion, bySource, logs: recent });
-      setClicks(clicksData);
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao carregar dados de conversão');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── guard ─────────────────────────────────────────────────────────────────
-  if (!empresa) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <Header />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            <BarChart3Icon className="w-10 h-10 text-slate-300 mx-auto" />
-            <p className="text-slate-500 text-sm">Selecione uma empresa para ver os dados.</p>
-            <Button variant="outline" size="sm" onClick={() => navigate('/empresa')}>
-              Configurar empresa
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
+      const res = await fetch(`${API_BASE}/api/v1/customer-closet/conversion-stats`);
+      const d = await res.json();
+      setData(d);
+    } catch { setError("Erro ao carregar métricas."); }
+    finally { setLoading(false); }
   }
 
-  const total    = data?.total ?? 0;
-  const clicked  = data?.clicked ?? 0;
-  const approved = data?.approved ?? 0;
-  const ctr      = pct(clicked, total);
-  const approvalRate = pct(approved, total);
+  useEffect(() => { load(); }, []);
+
+  if (loading) return (
+    <div style={{ padding:60, textAlign:"center", color:"#9a8f83",
+      fontFamily:"Georgia,serif", fontSize:16 }}>✦ Carregando…</div>
+  );
+  if (error) return <div style={{ padding:40, color:"#a04f4f" }}>{error}</div>;
+
+  const byDay = (data?.by_day || []).slice(0,30).reverse();
+  const byHour = data?.by_hour || [];
+  const bySource = (data?.by_source || []).map(s => ({
+    ...s, label: SOURCE_LABELS[s.source] || s.source,
+  }));
+  const topProducts = (data?.top_products || []).slice(0,8);
+  const topRequests = (data?.top_requests || []).slice(0,8);
+  const ranking = data?.ranking || [];
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9] font-sans">
-      <Header />
+    <div style={{ fontFamily:"Arial,sans-serif", padding:"28px 24px",
+      background:"#faf7f2", minHeight:"100vh" }}>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-
-        {/* ── título ───────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[#1A1A1A]" style={{ fontFamily: "'DM Serif Display', serif" }}>
-              Funil de Conversão
-            </h1>
-            <p className="text-sm text-slate-400 mt-0.5">
-              Recomendações geradas → cliques → aprovações
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* seletor de período */}
-            <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs font-medium">
-              {[7, 30, 90].map(d => (
-                <button
-                  key={d}
-                  onClick={() => setPeriod(d)}
-                  className={`px-3 py-1.5 transition-colors ${
-                    period === d
-                      ? 'bg-[#A3966A] text-white'
-                      : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-              className="border-slate-200"
-            >
-              {loading
-                ? <Loader2Icon className="w-4 h-4 animate-spin" />
-                : <RefreshCwIcon className="w-4 h-4" />
-              }
-            </Button>
-          </div>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between",
+        alignItems:"flex-start", marginBottom:24 }}>
+        <div>
+          <h1 style={{ margin:0, fontSize:24, fontFamily:"Georgia,serif", color:"#2f2a24" }}>
+            ✦ Dashboard · Personal Shopper
+          </h1>
+          <p style={{ margin:"4px 0 0", color:"#9a8f83", fontSize:13 }}>
+            Performance do widget MoodLab · Água de Coco
+          </p>
         </div>
+        <button onClick={load} style={{ background:GOLD, color:"#fff", border:"none",
+          borderRadius:999, padding:"9px 20px", fontSize:13, fontWeight:700,
+          cursor:"pointer" }}>↻ Atualizar</button>
+      </div>
 
-        {loading && !data ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2Icon className="w-6 h-6 animate-spin text-[#A3966A]" />
-          </div>
-        ) : (
-          <>
-            {/* ── KPI cards ─────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                icon={ZapIcon}
-                label="Recomendações"
-                value={fmt(total)}
-                sub={`últimos ${period} dias`}
-                accent="gold"
-              />
-              <StatCard
-                icon={MousePointerClickIcon}
-                label="Cliques"
-                value={fmt(clicked)}
-                sub={`CTR ${ctr}`}
-                accent="blue"
-              />
-              <StatCard
-                icon={TrendingUpIcon}
-                label="Taxa de Clique"
-                value={ctr}
-                sub="rec → clique"
-                accent="green"
-              />
-              <StatCard
-                icon={ShoppingBagIcon}
-                label="Aprovações"
-                value={fmt(approved)}
-                sub={`${approvalRate} das rec.`}
-                accent="slate"
-              />
-            </div>
+      {/* KPIs Principais */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:12, marginBottom:22 }}>
+        <KPI label="Conversas hoje" value={fmt(data?.last_24h)} icon="💬"
+          sub="últimas 24h" accent={GOLD} big />
+        <KPI label="Últimos 7 dias" value={fmt(data?.last_7d)} icon="📈"
+          sub="interações" accent="#5a8a6a" />
+        <KPI label="Clientes únicos" value={fmt(data?.unique_users)} icon="👤"
+          sub="total" accent="#6a7a9a" />
+        <KPI label="Sessões chat" value={fmt(data?.chat_sessions)} icon="🤖"
+          sub="personal shopper" accent={GOLD_DARK} />
+      </div>
 
-            {/* ── funil visual ──────────────────────────────────────────── */}
-            <Card className="border border-slate-100 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-[#1A1A1A] flex items-center gap-2">
-                  <BarChart3Icon className="w-4 h-4 text-[#A3966A]" />
-                  Funil de Engajamento
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-2">
-                <FunnelBar
-                  label="Recomendações geradas"
-                  value={total}
-                  max={total}
-                  color="bg-[#A3966A]"
-                  pctLabel="100%"
-                />
-                <FunnelBar
-                  label="Clicaram em algum produto"
-                  value={clicked}
-                  max={total}
-                  color="bg-sky-400"
-                  pctLabel={ctr}
-                />
-                <FunnelBar
-                  label="Aprovadas pela marca"
-                  value={approved}
-                  max={total}
-                  color="bg-emerald-400"
-                  pctLabel={approvalRate}
-                />
-                {clicks.length > 0 && (
-                  <FunnelBar
-                    label="Cliques diretos no widget"
-                    value={clicks.length}
-                    max={total}
-                    color="bg-violet-400"
-                    pctLabel={pct(clicks.length, total)}
-                  />
-                )}
-              </CardContent>
-            </Card>
+      {/* KPIs Conversão */}
+      <div style={{ background:`linear-gradient(135deg, ${GOLD}18, ${GOLD}08)`,
+        border:`1px solid ${GOLD}44`, borderRadius:16, padding:"20px 24px",
+        marginBottom:22 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:GOLD_DARK,
+          textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>
+          💰 Funil de Conversão — Widget → Compra (janela 72h)
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:16 }}>
+          <KPI label="Usuários do widget" value={fmt(data?.widget_users)}
+            icon="🛍️" accent={GOLD} />
+          <KPI label="Compraram depois" value={fmt(data?.converted_users)}
+            icon="✅" accent="#5a8a6a" />
+          <KPI label="Taxa de conversão" value={`${data?.conversion_rate || 0}%`}
+            icon="📊" accent="#5a8a6a" big />
+          <KPI label="Pedidos gerados" value={fmt(data?.orders_after_chat)}
+            icon="📦" accent="#6a7a9a" />
+          <KPI label="Receita atribuída" value={fmtBRL(data?.revenue_after_chat)}
+            icon="💵" accent={GOLD_DARK} big />
+        </div>
+        <p style={{ margin:"12px 0 0", fontSize:11, color:"#9a8f83" }}>
+          * Clientes que usaram o Personal Shopper e fizeram pedido nas 72h seguintes
+        </p>
+      </div>
 
-            {/* ── por ocasião ──────────────────────────────────────────── */}
-            {data?.byOccasion && Object.keys(data.byOccasion).length > 0 && (
-              <Card className="border border-slate-100 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-semibold text-[#1A1A1A] flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4 text-[#A3966A]" />
-                    CTR por Ocasião
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  {Object.entries(data.byOccasion)
-                    .sort((a, b) => b[1].total - a[1].total)
-                    .map(([occ, { total: t, clicked: c }]) => (
-                      <OccasionRow key={occ} ocasiao={occ} clicks={c} total={t} />
-                    ))
-                  }
-                </CardContent>
-              </Card>
-            )}
+      {/* Linha temporal */}
+      {byDay.length > 0 && (
+        <Section title="📅 Interações diárias — últimos 30 dias">
+          <ResponsiveContainer width="100%" height={190}>
+            <LineChart data={byDay}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0e8dc" />
+              <XAxis dataKey="day" tick={{ fontSize:11 }}
+                tickFormatter={d => d.slice(5)} />
+              <YAxis tick={{ fontSize:11 }} />
+              <Tooltip contentStyle={{ borderRadius:10, border:"1px solid #e8dece", fontSize:12 }}
+                formatter={(v,n) => [fmt(v), n==="clicks"?"Interações":"Clientes"]} />
+              <Line type="monotone" dataKey="clicks" stroke={GOLD}
+                strokeWidth={2.5} dot={{ fill:GOLD, r:3 }} name="clicks" />
+              <Line type="monotone" dataKey="users" stroke="#5a8a6a"
+                strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="users" />
+              <Legend formatter={v => v==="clicks"?"Interações":"Clientes únicos"} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Section>
+      )}
 
-            {/* ── estado vazio ─────────────────────────────────────────── */}
-            {total === 0 && (
-              <div className="text-center py-16 text-slate-400 space-y-2">
-                <BarChart3Icon className="w-10 h-10 mx-auto opacity-30" />
-                <p className="text-sm">Nenhuma recomendação registrada nos últimos {period} dias.</p>
-                <p className="text-xs">As métricas aparecerão assim que o engine começar a gerar recomendações.</p>
-              </div>
-            )}
-          </>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:22 }}>
+        {/* Horários de pico */}
+        {byHour.length > 0 && (
+          <Section title="🕐 Horários de pico (horário de Brasília)">
+            <ResponsiveContainer width="100%" height={170}>
+              <BarChart data={byHour}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0e8dc" />
+                <XAxis dataKey="hour" tick={{ fontSize:11 }}
+                  tickFormatter={h => `${h}h`} />
+                <YAxis tick={{ fontSize:11 }} />
+                <Tooltip contentStyle={{ borderRadius:10, border:"1px solid #e8dece" }}
+                  formatter={v => [fmt(v),"Interações"]}
+                  labelFormatter={h => `${h}h`} />
+                <Bar dataKey="clicks" fill={GOLD} radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Section>
         )}
-      </main>
+
+        {/* Por canal */}
+        {bySource.length > 0 && (
+          <Section title="📡 Por canal">
+            <ResponsiveContainer width="100%" height={170}>
+              <PieChart>
+                <Pie data={bySource} dataKey="clicks" nameKey="label"
+                  cx="50%" cy="50%" outerRadius={65}
+                  label={({label,percent}) =>
+                    percent > 0.05 ? `${(percent*100).toFixed(0)}%` : ""}
+                  labelLine={false}>
+                  {bySource.map((_,i) =>
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={v => [fmt(v),"Interações"]} />
+                <Legend formatter={(_,e) => e.payload.label} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Section>
+        )}
+      </div>
+
+      {/* Ranking de clientes */}
+      {ranking.length > 0 && (
+        <Section title="🏅 Ranking de clientes — uso do Personal Shopper">
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead>
+                <tr style={{ borderBottom:`2px solid ${GOLD_LIGHT}` }}>
+                  {["#","Cliente","Dias de uso","Interações","Última conversa",
+                    "Pedidos","Total gasto"].map(h => (
+                    <th key={h} style={{ textAlign:"left", padding:"8px 10px",
+                      color:"#9a8f83", fontWeight:700, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((r,i) => (
+                  <tr key={i} style={{ borderBottom:"1px solid #f5ede0",
+                    background: i < 3 ? `${GOLD}08` : "transparent" }}>
+                    <td style={{ padding:"9px 10px", fontWeight:700,
+                      color: i===0?"#b7960a":i===1?"#9a9a9a":i===2?"#c47a3a":"#9a8f83" }}>
+                      {i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}
+                    </td>
+                    <td style={{ padding:"9px 10px", fontWeight:600, color:"#2f2a24" }}>
+                      {r.email}
+                    </td>
+                    <td style={{ padding:"9px 10px", textAlign:"center" }}>
+                      {r.dias_de_uso}
+                    </td>
+                    <td style={{ padding:"9px 10px", textAlign:"center" }}>
+                      <span style={{ background:GOLD_LIGHT, color:GOLD_DARK,
+                        borderRadius:999, padding:"2px 10px", fontWeight:700 }}>
+                        {fmt(r.interacoes)}
+                      </span>
+                    </td>
+                    <td style={{ padding:"9px 10px", color:"#9a8f83" }}>
+                      {r.ultima_interacao}
+                    </td>
+                    <td style={{ padding:"9px 10px", textAlign:"center",
+                      fontWeight: r.pedidos > 0 ? 700 : 400,
+                      color: r.pedidos > 0 ? "#5a8a6a" : "#9a8f83" }}>
+                      {r.pedidos > 0 ? `✅ ${r.pedidos}` : "—"}
+                    </td>
+                    <td style={{ padding:"9px 10px", fontWeight: r.total_gasto > 0 ? 700 : 400,
+                      color: r.total_gasto > 0 ? GOLD_DARK : "#9a8f83" }}>
+                      {r.total_gasto > 0 ? fmtBRL(r.total_gasto) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        {/* O que pedem */}
+        {topRequests.length > 0 && (
+          <Section title="💬 O que os clientes estão pedindo">
+            {topRequests.map((r,i) => (
+              <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                alignItems:"center", padding:"7px 0",
+                borderBottom:"1px solid #f5ede0" }}>
+                <span style={{ fontSize:12, color:"#2f2a24", flex:1, paddingRight:10 }}>
+                  "{r.request?.slice(0,55)}{r.request?.length>55?"…":""}"
+                </span>
+                <span style={{ background:GOLD_LIGHT, color:GOLD_DARK,
+                  borderRadius:999, padding:"2px 9px", fontSize:11,
+                  fontWeight:700, whiteSpace:"nowrap" }}>{r.count}x</span>
+              </div>
+            ))}
+          </Section>
+        )}
+
+        {/* Top produtos */}
+        {topProducts.length > 0 && (
+          <Section title="🏆 Produtos mais clicados">
+            {topProducts.map((p,i) => (
+              <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                alignItems:"center", padding:"7px 0",
+                borderBottom:"1px solid #f5ede0" }}>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#2f2a24" }}>
+                    {i+1}. {p.name || p.product_id}
+                  </div>
+                  {p.category && <div style={{ fontSize:11, color:"#9a8f83" }}>{p.category}</div>}
+                </div>
+                <span style={{ background:GOLD_LIGHT, color:GOLD_DARK,
+                  borderRadius:999, padding:"2px 9px", fontSize:11,
+                  fontWeight:700 }}>{fmt(p.clicks)}</span>
+              </div>
+            ))}
+          </Section>
+        )}
+      </div>
     </div>
   );
 }
