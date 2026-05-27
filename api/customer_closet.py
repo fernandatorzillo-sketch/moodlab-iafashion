@@ -317,16 +317,6 @@ async def stylist_chat(payload: StylistChatRequest):
     ]
     catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
 
-    # DEBUG — remove após validar
-    import logging as _log
-    _log.getLogger("stylist_chat").warning(
-        f"[stylist-chat] email={email} | catalog_count={len(catalog_products)} | "
-        f"lines_count={len(catalog_lines)} | "
-        f"sample_img={catalog_products[0]['image_url'][:60] if catalog_products else 'VAZIO'} | "
-        f"sample_url={catalog_products[0]['url'][:60] if catalog_products else 'VAZIO'} | "
-        f"sample_price={catalog_products[0]['price'] if catalog_products else 'VAZIO'}"
-    )
-
     page_ctx = f"\nContexto da página: {payload.page_context}" if payload.page_context else ""
 
     system_prompt = f"""Você é uma personal shopper da Água de Coco. Responda SEMPRE em português.
@@ -363,6 +353,7 @@ REGRAS:
 - Se não houver produtos adequados, retorne products como lista vazia [].
 - NUNCA retorne texto fora do JSON.
 - NUNCA use markdown ou blocos de código.
+"""
 
     user_prompt = f"Cliente {client_name} disse: \"{message}\""
 
