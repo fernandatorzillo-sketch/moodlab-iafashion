@@ -50,7 +50,7 @@
     const css = `
       #ml-chat-fab {
         position: fixed;
-        bottom: 28px;
+        bottom: ${window.MOODLAB_WIDGET_BOTTOM || 28}px;
         right: 28px;
         z-index: 99999;
         width: 60px;
@@ -85,7 +85,7 @@
 
       #ml-chat-panel {
         position: fixed;
-        bottom: 100px;
+        bottom: ${(window.MOODLAB_WIDGET_BOTTOM || 28) + 72}px;
         right: 28px;
         z-index: 99998;
         width: 380px;
@@ -334,7 +334,7 @@
 
       @media (max-width: 480px) {
         #ml-chat-panel { right: 12px; bottom: 90px; width: calc(100vw - 24px); }
-        #ml-chat-fab { right: 16px; bottom: 20px; }
+        #ml-chat-fab { right: 16px; bottom: ${window.MOODLAB_WIDGET_BOTTOM || 20}px; }
       }
     `;
     const style = document.createElement("style");
