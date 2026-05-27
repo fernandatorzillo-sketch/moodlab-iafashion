@@ -1,5 +1,8 @@
+import json
+import os
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -17,6 +20,13 @@ class RecommendationRequest(BaseModel):
     email: str
     answers: dict[str, Any] = {}
     limit: int = 8
+
+
+class StylistChatRequest(BaseModel):
+    email: str
+    message: str
+    page_context: str = ""
+    limit: int = 6
 
 
 def normalize_email(email: Any) -> str:
@@ -140,17 +150,185 @@ async def recommend(payload: RecommendationRequest):
     }
 
 
+@router.post("/stylist-chat")
+async def stylist_chat(payload: StylistChatRequest):
+    """
+    Personal shopper público: lê closet + pedidos do cliente e responde
+    com sugestões de produtos baseadas na mensagem livre do usuário.
+    """
+    email = normalize_email(payload.email)
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail é obrigatório")
+
+    message = str(payload.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Mensagem é obrigatória")
+
+    limit = max(1, min(int(payload.limit or 6), 12))
+
+    # 1. Busca contexto do cliente (closet + pedidos)
+    try:
+        client_data = await get_customer_closet_payload(email)
+    except Exception:
+        client_data = {}
+
+    customer = client_data.get("customer") or {}
+    closet = client_data.get("closet") or []
+    orders = client_data.get("orders") or []
+    style_prefs = client_data.get("style_preferences") or {}
+    client_name = customer.get("name") or email.split("@")[0]
+
+    # 2. Busca produtos disponíveis no catálogo
+    try:
+        recs_data = await get_customer_recommendations(
+            email=email, occasion="", goal="novidades", style="", limit=30
+        )
+        catalog_products = recs_data.get("recommendations") or []
+    except Exception:
+        catalog_products = []
+
+    # 3. Monta contexto para a IA
+    closet_lines = [
+        f"- {p.get('name', '')} ({p.get('category', '')})"
+        for p in closet[:10]
+    ]
+    closet_summary = ("Closet virtual da cliente:\n" + "\n".join(closet_lines)) if closet_lines else ""
+
+    order_lines = []
+    for o in orders[:5]:
+        for item in (o.get("items") or [])[:3]:
+            order_lines.append(f"- {item.get('name', '')} ({item.get('category', '')})")
+    orders_summary = ("Compras anteriores:\n" + "\n".join(order_lines)) if order_lines else ""
+
+    style_parts = []
+    if style_prefs.get("estilo_favorito"):
+        style_parts.append(f"Estilo favorito: {style_prefs['estilo_favorito']}")
+    if style_prefs.get("ocasioes"):
+        style_parts.append(f"Ocasiões: {', '.join(style_prefs['ocasioes'])}")
+    style_summary = "\n".join(style_parts)
+
+    catalog_lines = [
+        f"- ID:{p.get('id') or p.get('product_id')} | {p.get('name', '')} | "
+        f"R$ {p.get('price') or p.get('preco') or '?'} | "
+        f"cat:{p.get('category', '')} | "
+        f"img:{p.get('image_url') or p.get('imagem_url', '')} | "
+        f"url:{p.get('url') or p.get('link', '')}"
+        for p in catalog_products[:20]
+    ]
+    catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
+
+    page_ctx = f"\nContexto da página: {payload.page_context}" if payload.page_context else ""
+
+    system_prompt = f"""Você é uma personal shopper sofisticada da Água de Coco, marca brasileira de moda praia e resort wear de luxo.
+Seu papel é o de uma vendedora consultora de loja física — atenciosa, personalizada e especialista em moda.
+Responda sempre em português, de forma calorosa e consultiva. Máximo 2 frases de introdução, depois os produtos.
+
+{closet_summary}
+{orders_summary}
+{style_summary}
+{page_ctx}
+
+{catalog_summary}
+
+REGRAS:
+- Sugira entre 2 e {limit} produtos do catálogo acima que mais combinem com o pedido da cliente.
+- Retorne APENAS um JSON válido no formato abaixo, sem texto adicional antes ou depois:
+{{
+  "message": "frase consultiva personalizada (máx 2 frases)",
+  "products": [
+    {{
+      "id": "id do produto",
+      "name": "nome",
+      "price": "preço ex: R$ 299,00",
+      "category": "categoria",
+      "image_url": "url da imagem",
+      "url": "url do produto no site"
+    }}
+  ]
+}}"""
+
+    user_prompt = f"Cliente {client_name} disse: \"{message}\""
+
+    # 4. Chama Claude Haiku via Anthropic API
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if not anthropic_key:
+        # Fallback sem IA: retorna os primeiros produtos do catálogo
+        fallback = [
+            {
+                "id": str(p.get("id") or p.get("product_id") or ""),
+                "name": p.get("name") or p.get("nome") or "",
+                "price": str(p.get("price") or p.get("preco") or ""),
+                "category": p.get("category") or p.get("categoria") or "",
+                "image_url": p.get("image_url") or p.get("imagem_url") or "",
+                "url": p.get("url") or p.get("link") or "",
+            }
+            for p in catalog_products[:limit]
+        ]
+        return {
+            "message": f"Olá, {client_name}! Separei algumas peças que combinam com seu estilo.",
+            "products": fallback,
+        }
+
+    async with httpx.AsyncClient(timeout=30) as http:
+        resp = await http.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1024,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}],
+            },
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Erro ao consultar IA")
+
+    raw = resp.json()
+    text = raw.get("content", [{}])[0].get("text", "")
+
+    # 5. Parse do JSON retornado pela IA
+    try:
+        clean = text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        result = json.loads(clean)
+    except Exception:
+        result = {
+            "message": text[:200] if text else "Aqui estão algumas sugestões para você!",
+            "products": [],
+        }
+
+    # 6. Registra interação no tracking
+    try:
+        from services.closet_db import AsyncSessionLocal
+        from sqlalchemy import text as sql_text
+        async with AsyncSessionLocal() as db:
+            await db.execute(sql_text("""
+                INSERT INTO recommendation_clicks
+                  (email, product_id, occasion, source, clicked_at)
+                VALUES (:email, 'stylist_chat', :occasion, 'widget_stylist_chat', NOW())
+            """), {"email": email, "occasion": message[:100]})
+            await db.commit()
+    except Exception:
+        pass
+
+    return result
+
+
 @router.post("/track-click")
 async def track_recommendation_click(payload: dict):
     """
     Rastreia quando um cliente clica em 'Ver produto' a partir de uma recomendação.
-    Usado para métricas de conversão no dashboard.
     """
     from datetime import datetime
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
-    email    = normalize_email(str(payload.get("email", "") or ""))
+    email      = normalize_email(str(payload.get("email", "") or ""))
     product_id = str(payload.get("product_id", "") or "")
     occasion   = str(payload.get("occasion",   "") or "")
     source     = str(payload.get("source",     "widget") or "widget")
@@ -174,8 +352,7 @@ async def track_recommendation_click(payload: dict):
                 "clicked_at": datetime.utcnow(),
             })
             await s.commit()
-    except Exception as e:
-        # Tabela pode não existir ainda — não falha o widget
+    except Exception:
         pass
 
     return {"ok": True}
@@ -191,7 +368,6 @@ async def get_conversion_stats():
 
     try:
         async with AsyncSessionLocal() as s:
-            # Total de cliques por fonte
             r1 = await s.execute(text("""
                 SELECT source, COUNT(*) as clicks, COUNT(DISTINCT email) as unique_users
                 FROM recommendation_clicks
@@ -199,9 +375,8 @@ async def get_conversion_stats():
                 ORDER BY clicks DESC
             """))
             by_source = [{"source": r.source, "clicks": r.clicks, "unique_users": r.unique_users}
-                        for r in r1.fetchall()]
+                         for r in r1.fetchall()]
 
-            # Cliques por ocasião
             r2 = await s.execute(text("""
                 SELECT occasion, COUNT(*) as clicks
                 FROM recommendation_clicks
@@ -211,7 +386,6 @@ async def get_conversion_stats():
             """))
             by_occasion = [{"occasion": r.occasion, "clicks": r.clicks} for r in r2.fetchall()]
 
-            # Top produtos clicados
             r3 = await s.execute(text("""
                 SELECT rc.product_id, cp.name, cp.category, COUNT(*) as clicks
                 FROM recommendation_clicks rc
@@ -221,10 +395,9 @@ async def get_conversion_stats():
                 LIMIT 20
             """))
             top_products = [{"product_id": r.product_id, "name": r.name,
-                           "category": r.category, "clicks": r.clicks}
-                          for r in r3.fetchall()]
+                             "category": r.category, "clicks": r.clicks}
+                            for r in r3.fetchall()]
 
-            # Cliques por dia (últimos 30 dias)
             r4 = await s.execute(text("""
                 SELECT DATE(clicked_at) as day, COUNT(*) as clicks
                 FROM recommendation_clicks
@@ -234,7 +407,6 @@ async def get_conversion_stats():
             """))
             by_day = [{"day": str(r.day), "clicks": r.clicks} for r in r4.fetchall()]
 
-            # Total geral
             r5 = await s.execute(text("SELECT COUNT(*) FROM recommendation_clicks"))
             total = r5.scalar() or 0
 
