@@ -164,7 +164,18 @@ async def stylist_chat(payload: StylistChatRequest):
     # Classifica produtos por tipo para o prompt
     def _classify(name, cat):
         n = (name + " " + (cat or "")).lower()
-        if any(t in n for t in ["biquíni","biquini","sutiã","sutia","maio","maiô","calcinha","biquine"]): return "PRAIA_TOP" if any(t in n for t in ["sutiã","sutia","biquíni sutiã","top","faixa","bandeau","frente única"]) else "PRAIA_BOTTOM"
+        # Maiô é peça inteira — categoria própria
+        if any(t in n for t in ["maiô","maio ","maio-","maio "]):
+            return "MAIO"
+        # Sutiã/top de biquíni = parte de cima
+        if any(t in n for t in ["sutiã","sutia","biquíni sutiã","biquini sutia","top praia","faixa praia","bandeau","frente única"]):
+            return "PRAIA_TOP"
+        # Calcinha de biquíni = parte de baixo
+        if any(t in n for t in ["biquíni calcinha","biquini calcinha","calcinha ","calcinha lacinho","calcinha lateral","calcinha fio"]):
+            return "PRAIA_BOTTOM"
+        # Biquíni genérico — verifica se é top ou bottom pelo nome
+        if any(t in n for t in ["biquíni","biquini","biquine"]):
+            return "PRAIA_TOP" if any(t in n for t in ["sutiã","sutia","top","faixa","bandeau","frente","cortininha","cortinha"]) else "PRAIA_BOTTOM"
         if any(t in n for t in ["saída","saida","canga","pareo","pareô","kimono capa","capa "]): return "SAIDA"
         if any(t in n for t in ["vestido","macacão","macacao"]): return "VESTIDO"
         if any(t in n for t in ["calça","calca","short","bermuda","saia"]): return "BOTTOM"
@@ -177,21 +188,36 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # Detecta contexto da mensagem para filtrar produtos incoerentes
     msg_lower = message.lower()
-    is_beach = any(t in msg_lower for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar"])
+    is_beach = any(t in msg_lower for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf"])
     is_cold = any(t in msg_lower for t in ["frio","inverno","tricô","trico","suéter","casaco","blusa fria"])
-    is_party = any(t in msg_lower for t in ["festa","balada","jantar","evento","chique","sofisticad","formatura"])
-    is_casual = any(t in msg_lower for t in ["casual","dia a dia","passeio","shopping","trabalho"])
+    is_party = any(t in msg_lower for t in ["festa","balada","jantar","evento","chique","sofisticad","formatura","casamento","aniversario","aniversário","barco","iate","reveillon"])
+    is_casual = any(t in msg_lower for t in ["casual","dia a dia","passeio","shopping","trabalho","escritorio"])
 
     # Filtra produtos incoerentes com o contexto
     filtered_catalog = []
     for p in catalog_products:
         tipo = _classify(p["name"], p["category"])
-        # Remove itens de frio se contexto é praia/festa quente
-        if tipo == "FRIO" and (is_beach or is_party) and not is_cold:
-            continue
-        # Remove biquínis se contexto é claramente casual/frio
-        if tipo in ("PRAIA_TOP","PRAIA_BOTTOM") and is_cold:
-            continue
+        # Detecta se pediu especificamente maiô
+        is_maio = any(t in msg_lower for t in ["maiô","maio","body"])
+
+        # FESTA: remove biquíni/sutiã/calcinha praia e itens de frio
+        if is_party and not is_beach:
+            if tipo in ("PRAIA_TOP", "PRAIA_BOTTOM", "MAIO"):
+                continue
+            if tipo == "FRIO":
+                continue
+        # PRAIA com pedido de maiô: prioriza MAIO, mantém saídas
+        if is_maio:
+            if tipo in ("PRAIA_TOP", "PRAIA_BOTTOM") and not is_beach:
+                continue  # remove biquíni se pediu especificamente maiô
+        # PRAIA: remove itens de frio
+        if is_beach and not is_party:
+            if tipo == "FRIO":
+                continue
+        # FRIO: remove biquínis e maiôs
+        if is_cold:
+            if tipo in ("PRAIA_TOP","PRAIA_BOTTOM","MAIO"):
+                continue
         p["_tipo"] = tipo
         filtered_catalog.append(p)
 
@@ -203,7 +229,7 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # Monta catálogo balanceado: tops + bottoms + complementos
     balanced = []
-    priority_order = ["PRAIA_TOP","PRAIA_BOTTOM","SAIDA","VESTIDO","TOP","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO"]
+    priority_order = ["MAIO","PRAIA_TOP","PRAIA_BOTTOM","SAIDA","VESTIDO","TOP","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO"]
     per_type = max(2, 25 // max(len([t for t in priority_order if by_type[t]]), 1))
     for tipo in priority_order:
         balanced.extend(by_type[tipo][:per_type])
@@ -216,7 +242,7 @@ async def stylist_chat(payload: StylistChatRequest):
             seen_ids.add(p["product_id"])
 
     catalog_lines = "\n".join(
-        f"TIPO:{p['_tipo']}|ID:{p['product_id']}|NOME:{p['name']}|PRECO:{p['price']}|CAT:{p['category']}|IMG:{p['image_url']}|URL:{p['url']}"
+        f"TIPO:{p['_tipo']}|ID:{p['product_id']}|NOME:{p['name']}|COLECAO:{p.get('collection','') or ''}|PRECO:{p['price']}|CAT:{p['category']}|IMG:{p['image_url']}|URL:{p['url']}"
         for p in balanced[:25]
         if p.get("image_url")  # só produtos COM imagem
     )
@@ -230,17 +256,22 @@ CLIENTE: {client_name}
 CATÁLOGO EM ESTOQUE:
 {catalog_lines}
 
-MISSÃO: Monte um look completo e COERENTE respondendo ao pedido (mín. 3, máx. {limit} peças).
+MISSÃO: Monte um look COERENTE COM A OCASIÃO pedida (mín. 3, máx. {limit} peças).
 
-REGRAS DE COERÊNCIA DO LOOK:
-- NUNCA misture peças de praia (biquíni/sutiã) com peças de frio (tricô/suéter/casaco).
-- Se sugerir PRAIA_TOP (sutiã/top), OBRIGATÓRIO incluir PRAIA_BOTTOM (calcinha) do mesmo estilo.
-- Se sugerir TOP ou VESTIDO, inclua BOTTOM (calça/saia/short) ou CALCADO.
-- Sempre tente incluir: peça principal + complemento + acessório/calçado.
-- Se tem tops no closet da cliente, sugira calcinhas do mesmo mix/coleção.
-- Priorize as CORES FAVORITAS da cliente.
+CLASSIFICAÇÃO DA OCASIÃO DO PEDIDO:
+- Festa / Jantar / Evento / Balada / Formatura → look elegante: VESTIDO ou CONJUNTO (blusa+calça/saia) + CALCADO (scarpin/sandália) + BOLSA/ACESSÓRIO. NUNCA sugira biquíni/sutiã para festa.
+- Praia / Resort / Piscina / Mar → look praia: PRAIA_TOP + PRAIA_BOTTOM DO MESMO MIX + SAIDA + SANDÁLIA
+- Maiô / Body → MAIO (peça inteira) + SAIDA + SANDÁLIA/ACESSÓRIO. NUNCA sugira calcinha separada com maiô.
+- Casual / Passeio / Dia a dia → look casual: TOP ou BLUSA + BOTTOM (calça/saia/short) + SANDÁLIA
+- Viagem → look versátil: peças que combinam entre si
 
-MENSAGEM: Mencione que selecionou baseado nas compras anteriores e peças do guarda-roupa.
+REGRAS ABSOLUTAS DE PAREAMENTO:
+1. FESTA/JANTAR = ZERO biquíni, ZERO sutiã, ZERO calcinha de praia — use vestidos, conjuntos, calças.
+2. Se sugerir PRAIA_TOP (sutiã/top praia), a calcinha DEVE ser da MESMA COLEÇÃO/MIX. Ex: Sutiã "Báltico" → Calcinha "Báltico". NUNCA misture coleções diferentes.
+3. Calcinha de praia SÓ acompanha top/sutiã de praia do mesmo mix. NUNCA isolada.
+4. Verifique os campos NOME dos produtos — o nome da coleção deve bater entre sutiã e calcinha.
+
+MENSAGEM: Máx. 2 frases. Mencione a ocasião e que selecionou baseado no histórico e guarda-roupa.
 
 RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
 {{"message":"frase calorosa máx 2 linhas mencionando histórico e complemento do guarda-roupa","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","category":"CAT exato","image_url":"IMG exata","url":"URL exata"}}]}}"""

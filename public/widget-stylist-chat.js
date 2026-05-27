@@ -419,11 +419,18 @@
   }
 
   // ── Estado persistente via sessionStorage ────────────────────────────────
-  const STORAGE_KEY = "ml_stylist_state";
+  const STORAGE_PREFIX = "ml_stylist_";
 
-  function loadState() {
+  // Chave isolada por email — evita compartilhar conversa entre contas
+  function getStorageKey(email) {
+    const safe = (email || "anon").replace(/[^a-z0-9]/gi, "_").toLowerCase().slice(0, 30);
+    return STORAGE_PREFIX + safe;
+  }
+
+  function loadState(email) {
     try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
+      const key = getStorageKey(email);
+      const saved = sessionStorage.getItem(key);
       if (saved) return JSON.parse(saved);
     } catch (_) {}
     return null;
@@ -431,23 +438,60 @@
 
   function saveState(s) {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      const key = getStorageKey(s.email);
+      // Limita a 10 mensagens e descarta produtos pesados se necessário
+      const msgs = s.messages.slice(-10);
+      const payload = JSON.stringify({
         email: s.email,
         emailConfirmed: s.emailConfirmed,
-        messages: s.messages,   // array de {type, text, products}
-        open: false,             // sempre fecha ao navegar
-      }));
+        messages: msgs,
+        open: false,
+      });
+      // Se muito grande (>50KB), salva só texto
+      if (payload.length > 50000) {
+        const textOnly = msgs.filter(m => m.type !== "products");
+        sessionStorage.setItem(key, JSON.stringify({
+          email: s.email,
+          emailConfirmed: s.emailConfirmed,
+          messages: textOnly.slice(-6),
+          open: false,
+        }));
+      } else {
+        sessionStorage.setItem(key, payload);
+      }
+    } catch (_) {
+      // Se falhar (ex: storage cheio), não trava
+    }
+  }
+
+  function clearOtherSessions(currentEmail) {
+    // Remove sessões de outros emails ao iniciar
+    try {
+      const keys = Object.keys(sessionStorage);
+      for (const k of keys) {
+        if (k.startsWith(STORAGE_PREFIX) && k !== getStorageKey(currentEmail)) {
+          sessionStorage.removeItem(k);
+        }
+      }
     } catch (_) {}
   }
 
-  const _saved = loadState();
+  const _loggedEmail = getLoggedEmail();
+  // Tenta recuperar estado do email logado ou de qualquer sessão salva
+  const _saved = loadState(_loggedEmail) || loadState("");
+  const _initialEmail = _loggedEmail || (_saved && _saved.email) || "";
+  const _saved2 = _initialEmail ? loadState(_initialEmail) : _saved;
+
   const state = {
     open: false,
-    email: getLoggedEmail() || (_saved && _saved.email) || "",
-    emailConfirmed: !!(getLoggedEmail() || (_saved && _saved.emailConfirmed)),
+    email: _initialEmail,
+    emailConfirmed: !!(_loggedEmail || (_saved2 && _saved2.emailConfirmed && _saved2.email === _initialEmail)),
     loading: false,
-    messages: (_saved && _saved.messages) || [],  // histórico da conversa
+    messages: (_saved2 && _saved2.email === _initialEmail && _saved2.messages) || [],
   };
+
+  // Limpa sessões de outros emails
+  if (_initialEmail) clearOtherSessions(_initialEmail);
 
   // ── Cria DOM ────────────────────────────────────────────────────────────────
   function buildUI() {
@@ -546,13 +590,21 @@
   function restoreMessages() {
     const messages = document.getElementById("ml-messages");
     messages.innerHTML = "";
-    for (const msg of state.messages) {
-      if (msg.type === "bot") addBotMessage(msg.text);
-      else if (msg.type === "user") addUserMessage(msg.text);
+    // Restaura async para não bloquear o thread principal
+    const msgs = state.messages.slice(-8); // só últimas 8
+    let i = 0;
+    function restoreNext() {
+      if (i >= msgs.length) {
+        setTimeout(() => { messages.scrollTop = messages.scrollHeight; }, 50);
+        return;
+      }
+      const msg = msgs[i++];
+      if (msg.type === "bot") addBotMessage(msg.text, false);
+      else if (msg.type === "user") addUserMessage(msg.text, false);
       else if (msg.type === "products" && msg.products) addProductCarousel(msg.products);
+      setTimeout(restoreNext, 0); // yield para não travar
     }
-    // Scroll to bottom
-    setTimeout(() => { messages.scrollTop = messages.scrollHeight; }, 50);
+    restoreNext();
   }
 
   function closePanel() {
@@ -578,8 +630,14 @@
       if (input) input.style.borderColor = "#e05c3a";
       return;
     }
+    // Se email mudou, limpa conversa anterior
+    if (state.email && state.email !== email) {
+      state.messages = [];
+      document.getElementById("ml-messages").innerHTML = "";
+    }
     state.email = email;
     state.emailConfirmed = true;
+    clearOtherSessions(email);
     saveState(state);
     showInputBar();
     addBotMessage(`Ótimo, ${email.split("@")[0]}! Me conta o que você está procurando. 🌿`);
@@ -667,6 +725,7 @@
         img.src = p.image_url;
         img.alt = p.name || "";
         img.loading = "lazy";
+        img.decoding = "async";
         img.onerror = function () {
           const ph = document.createElement("div");
           ph.className = "ml-card-img-placeholder";
@@ -722,8 +781,19 @@
     scrollWrap.appendChild(carousel);
     wrapper.appendChild(scrollWrap);
     appendMsg(wrapper);
-    // Salva produtos no histórico
-    state.messages.push({ type: "products", products });
+    // Salva apenas referência leve dos produtos (não as imagens)
+    state.messages.push({ 
+      type: "products", 
+      products: products.map(p => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        url: p.url,
+        image_url: p.image_url,
+        category: p.category,
+        is_complement: p.is_complement,
+      })).slice(0, 6) // máximo 6 produtos salvos
+    });
     saveState(state);
   }
 
@@ -810,9 +880,10 @@
     }, 4000);
   }
 
+  // Inicia com pequeno delay para não bloquear carregamento da página
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", () => setTimeout(init, 300));
   } else {
-    init();
+    setTimeout(init, 300);
   }
 })();
