@@ -279,6 +279,15 @@
         font-weight: 700;
         font-family: 'Arial', sans-serif;
       }
+      .ml-card-price-de {
+        font-size: 11px;
+        color: ${BRAND.textSoft};
+        font-family: 'Arial', sans-serif;
+        margin-bottom: 1px;
+      }
+      .ml-card-price-de s {
+        text-decoration: line-through;
+      }
       .ml-card-btn {
         display: block;
         margin: 6px 8px 8px;
@@ -617,9 +626,15 @@
       // Info
       const body = document.createElement("div");
       body.className = "ml-card-body";
+      const priceHtml = p.price
+        ? (p.original_price && p.original_price !== p.price
+            ? `<div class="ml-card-price-de">De: <s>${p.original_price}</s></div>
+               <div class="ml-card-price">Por: ${p.price}</div>`
+            : `<div class="ml-card-price">${p.price}</div>`)
+        : "";
       body.innerHTML = `
         <div class="ml-card-name">${p.name || ""}</div>
-        <div class="ml-card-price">${p.price || ""}</div>
+        ${priceHtml}
       `;
       card.appendChild(body);
 

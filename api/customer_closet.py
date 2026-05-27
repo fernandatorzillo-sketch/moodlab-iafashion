@@ -227,13 +227,25 @@ async def stylist_chat(payload: StylistChatRequest):
             u = u + "/p"
         return u
 
+    def _fmt_price(p_dict):
+        """Formata preço como 'R$ 299,00' a partir de float ou string."""
+        v = p_dict.get("price") or p_dict.get("preco")
+        if not v:
+            return ""
+        try:
+            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
+
     catalog_lines = [
-        f"- ID:{p.get('id') or p.get('product_id')} | {p.get('name', '')} | "
-        f"PRECO:R$ {p.get('price') or p.get('preco') or '?'} | "
+        f"- ID:{p.get('product_id') or p.get('id')} | "
+        f"NOME:{p.get('name', '')} | "
+        f"PRECO:{_fmt_price(p)} | "
         f"CAT:{p.get('category', '')} | "
         f"IMG:{p.get('image_url') or p.get('imagem_url') or ''} | "
         f"URL:{_safe_url(p.get('url') or p.get('product_url') or p.get('link') or '')}"
         for p in catalog_products[:20]
+        if p.get('name')  # só inclui produtos com nome
     ]
     catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
 
@@ -250,12 +262,18 @@ Responda sempre em português, de forma calorosa e consultiva. Máximo 2 frases 
 
 {catalog_summary}
 
-REGRAS CRÍTICAS:
-- Sugira entre 2 e {limit} produtos EXCLUSIVAMENTE do catálogo listado acima.
-- Use EXATAMENTE os valores de IMG: e URL: de cada produto — NUNCA invente ou modifique URLs.
-- Se IMG: estiver vazio, deixe image_url como string vazia "".
-- URLs dos produtos SEMPRE começam com https://www.aguadecoco.com.br — copie EXATAMENTE do campo URL:.
-- Retorne APENAS um JSON válido no formato abaixo, sem texto adicional antes ou depois:
+REGRAS CRÍTICAS — SIGA EXATAMENTE:
+1. Escolha {limit} produtos do catálogo acima que melhor atendam o pedido.
+2. Para cada produto escolhido, copie EXATAMENTE os campos do catálogo:
+   - "id" = valor do campo ID:
+   - "name" = valor do campo NOME:
+   - "price" = valor do campo PRECO: (ex: "R$ 299,00") — NUNCA escreva "Consultar em loja"
+   - "category" = valor do campo CAT:
+   - "image_url" = valor do campo IMG: — copie a URL completa SEM modificar nada
+   - "url" = valor do campo URL: — copie a URL completa SEM modificar nada
+3. Se PRECO: estiver vazio, use "" (string vazia) — NUNCA invente preço.
+4. Se IMG: estiver vazio, use "" (string vazia) — NUNCA invente URL de imagem.
+5. Retorne APENAS JSON válido, sem texto antes ou depois, sem markdown:
 {{
   "message": "frase consultiva personalizada (máx 2 frases)",
   "products": [
@@ -281,7 +299,7 @@ REGRAS CRÍTICAS:
             {
                 "id": str(p.get("id") or p.get("product_id") or ""),
                 "name": p.get("name") or p.get("nome") or "",
-                "price": f"R$ {p.get('price') or p.get('preco') or ''}" if (p.get("price") or p.get("preco")) else "",
+                "price": _fmt_price(p),
                 "category": p.get("category") or p.get("categoria") or "",
                 "image_url": p.get("image_url") or p.get("imagem_url") or "",
                 "url": p.get("url") or p.get("product_url") or p.get("link") or "",
