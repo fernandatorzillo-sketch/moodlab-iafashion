@@ -178,24 +178,69 @@ async def stylist_chat(payload: StylistChatRequest):
     style_prefs = client_data.get("style_preferences") or {}
     client_name = customer.get("name") or email.split("@")[0]
 
-    # 2. Busca produtos disponíveis no catálogo
+    # 2. Busca produtos direto do banco — garante image_url, price e product_url reais
+    catalog_products = []
     try:
-        recs_data = await get_customer_recommendations(
-            email=email, occasion="", goal="novidades", style="", limit=40
-        )
-        # Filtra produtos com imagem e URL válidos
-        all_recs = recs_data.get("recommendations") or []
-        catalog_products = [
-            p for p in all_recs
-            if (p.get("image_url") or p.get("imagem_url"))
-            and (p.get("url") or p.get("product_url"))
-            and (p.get("price") or p.get("preco"))  # só com preço
-        ] or [
-            p for p in all_recs
-            if (p.get("image_url") or p.get("imagem_url"))
-        ] or all_recs
-    except Exception:
-        catalog_products = []
+        from services.closet_db import AsyncSessionLocal
+        from models.catalog_product import CatalogProduct
+        from models.inventory_by_sku import InventoryBySku
+        from sqlalchemy import select, and_, or_
+
+        async with AsyncSessionLocal() as db:
+            stmt = (
+                select(CatalogProduct)
+                .join(InventoryBySku, InventoryBySku.sku_id == CatalogProduct.sku_id)
+                .where(and_(
+                    CatalogProduct.is_active == 1,
+                    CatalogProduct.image_url.isnot(None),
+                    CatalogProduct.image_url != "",
+                    CatalogProduct.product_url.isnot(None),
+                    CatalogProduct.product_url != "",
+                    CatalogProduct.price.isnot(None),
+                    CatalogProduct.price > 0,
+                    InventoryBySku.is_available == 1,
+                    InventoryBySku.quantity > 0,
+                ))
+                .order_by(CatalogProduct.updated_at.desc())
+                .limit(60)
+            )
+            result = await db.execute(stmt)
+            rows = result.scalars().all()
+
+            def _clean_img_url(url: str) -> str:
+                if not url: return ""
+                url = str(url).strip()
+                if "?" in url: url = url.split("?")[0]
+                import re as _re
+                url = _re.sub(r"-\d+-\d+(/)", r"-500-500", url)
+                return url
+
+            def _fmt_p(v) -> str:
+                try:
+                    f_val = float(v)
+                    if f_val <= 0: return ""
+                    cents = round(f_val * 100)
+                    reais = cents // 100
+                    centavos = cents % 100
+                    return f"R$ {reais:,}".replace(",", ".") + f",{centavos:02d}"
+                except Exception:
+                    return str(v) if v else ""
+
+            catalog_products = [
+                {
+                    "product_id": r.product_id,
+                    "name": r.name or "",
+                    "price": _fmt_p(r.price),
+                    "category": r.category or "",
+                    "image_url": _clean_img_url(r.image_url),
+                    "url": r.product_url if r.product_url.startswith("http")
+                           else f"https://www.aguadecoco.com.br{r.product_url}",
+                }
+                for r in rows
+                if r.name and r.image_url and r.product_url
+            ]
+    except Exception as _e:
+        pass
 
     # 3. Monta contexto para a IA
     closet_lines = [
@@ -262,55 +307,52 @@ async def stylist_chat(payload: StylistChatRequest):
         return url
 
     catalog_lines = [
-        f"- ID:{p.get('product_id') or p.get('id')} | "
-        f"NOME:{p.get('name', '')} | "
-        f"PRECO:{_fmt_price(p)} | "
-        f"CAT:{p.get('category', '')} | "
-        f"IMG:{_clean_img(p.get('image_url') or p.get('imagem_url') or '')} | "
-        f"URL:{_safe_url(p.get('url') or p.get('product_url') or p.get('link') or '')}"
+        f"- ID:{p['product_id']} | "
+        f"NOME:{p['name']} | "
+        f"PRECO:{p['price']} | "
+        f"CAT:{p['category']} | "
+        f"IMG:{p['image_url']} | "
+        f"URL:{p['url']}"
         for p in catalog_products[:20]
-        if p.get('name')  # só inclui produtos com nome
     ]
     catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
 
     page_ctx = f"\nContexto da página: {payload.page_context}" if payload.page_context else ""
 
-    system_prompt = f"""Você é uma personal shopper sofisticada da Água de Coco, marca brasileira de moda praia e resort wear de luxo.
-Seu papel é o de uma vendedora consultora de loja física — atenciosa, personalizada e especialista em moda.
-Responda sempre em português, de forma calorosa e consultiva. Máximo 2 frases de introdução, depois os produtos.
+    system_prompt = f"""Você é uma personal shopper da Água de Coco. Responda SEMPRE em português.
 
+CONTEXTO DA CLIENTE:
 {closet_summary}
 {orders_summary}
 {style_summary}
 {page_ctx}
 
+CATÁLOGO DISPONÍVEL PARA VENDA (produtos em estoque):
 {catalog_summary}
 
-REGRAS CRÍTICAS — SIGA EXATAMENTE:
-1. Escolha {limit} produtos do catálogo acima que melhor atendam o pedido.
-2. Para cada produto escolhido, copie EXATAMENTE os campos do catálogo:
-   - "id" = valor do campo ID:
-   - "name" = valor do campo NOME:
-   - "price" = valor do campo PRECO: (ex: "R$ 299,00") — NUNCA escreva "Consultar em loja"
-   - "category" = valor do campo CAT:
-   - "image_url" = valor do campo IMG: — copie a URL completa SEM modificar nada
-   - "url" = valor do campo URL: — copie a URL completa SEM modificar nada
-3. Se PRECO: estiver vazio, use "" (string vazia) — NUNCA invente preço.
-4. Se IMG: estiver vazio, use "" (string vazia) — NUNCA invente URL de imagem.
-5. Retorne APENAS JSON válido, sem texto antes ou depois, sem markdown:
+TAREFA: A cliente fez uma pergunta. Escolha {limit} produtos do CATÁLOGO ACIMA que melhor respondam ao pedido dela.
+
+FORMATO DA RESPOSTA — retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
 {{
-  "message": "frase consultiva personalizada (máx 2 frases)",
+  "message": "uma frase consultiva calorosa em português (máximo 2 frases)",
   "products": [
     {{
-      "id": "valor exato do campo ID:",
-      "name": "valor exato do campo nome",
-      "price": "valor exato do campo PRECO:",
-      "category": "valor exato do campo CAT:",
-      "image_url": "valor exato do campo IMG: — copie sem alterar",
-      "url": "valor exato do campo URL: — copie sem alterar"
+      "id": "copie o valor após ID:",
+      "name": "copie o valor após NOME:",
+      "price": "copie o valor após PRECO:",
+      "category": "copie o valor após CAT:",
+      "image_url": "copie a URL completa após IMG:",
+      "url": "copie a URL completa após URL:"
     }}
   ]
-}}"""
+}}
+
+REGRAS:
+- Use APENAS produtos do catálogo listado acima.
+- Copie os campos EXATAMENTE como estão — não invente preços, imagens ou URLs.
+- Se não houver produtos adequados, retorne products como lista vazia [].
+- NUNCA retorne texto fora do JSON.
+- NUNCA use markdown ou blocos de código.
 
     user_prompt = f"Cliente {client_name} disse: \"{message}\""
 
@@ -319,17 +361,7 @@ REGRAS CRÍTICAS — SIGA EXATAMENTE:
 
     if not anthropic_key:
         # Fallback sem IA: retorna os primeiros produtos do catálogo
-        fallback = [
-            {
-                "id": str(p.get("id") or p.get("product_id") or ""),
-                "name": p.get("name") or p.get("nome") or "",
-                "price": _fmt_price(p),
-                "category": p.get("category") or p.get("categoria") or "",
-                "image_url": p.get("image_url") or p.get("imagem_url") or "",
-                "url": p.get("url") or p.get("product_url") or p.get("link") or "",
-            }
-            for p in catalog_products[:limit]
-        ]
+        fallback = catalog_products[:limit]
         return {
             "message": f"Olá, {client_name}! Separei algumas peças que combinam com seu estilo.",
             "products": fallback,
@@ -357,15 +389,61 @@ REGRAS CRÍTICAS — SIGA EXATAMENTE:
     raw = resp.json()
     text = raw.get("content", [{}])[0].get("text", "")
 
-    # 5. Parse do JSON retornado pela IA
+    # 5. Parse do JSON retornado pela IA — robusto contra texto extra
+    result = None
     try:
-        clean = text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        # Tenta extrair JSON mesmo se vier com texto antes/depois
+        clean = text.strip()
+        # Remove blocos markdown
+        clean = clean.replace("```json", "").replace("```", "").strip()
+        # Tenta parse direto
         result = json.loads(clean)
     except Exception:
+        pass
+
+    if result is None:
+        # Tenta encontrar o JSON dentro do texto via busca de { }
+        try:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                result = json.loads(text[start:end])
+        except Exception:
+            pass
+
+    if result is None:
+        # Fallback: mensagem do texto + primeiros produtos do catálogo
+        msg = text[:200] if text else "Separei algumas sugestões para você!"
+        # Remove asteriscos de markdown da mensagem
+        msg = msg.replace("**", "").replace("*", "").strip()
         result = {
-            "message": text[:200] if text else "Aqui estão algumas sugestões para você!",
-            "products": [],
+            "message": msg,
+            "products": catalog_products[:limit],
         }
+
+    # Garante que products é lista e limpa markdown dos campos
+    if not isinstance(result.get("products"), list):
+        result["products"] = catalog_products[:limit]
+
+    # Remove markdown da mensagem
+    if result.get("message"):
+        result["message"] = result["message"].replace("**", "").replace("*", "").strip()
+
+    # Garante que cada produto tem os campos necessários — usa dados reais do catálogo como fallback
+    catalog_by_id = {p["product_id"]: p for p in catalog_products}
+    clean_products = []
+    for p in result.get("products", [])[:limit]:
+        pid = str(p.get("id") or p.get("product_id") or "")
+        real = catalog_by_id.get(pid, {})
+        clean_products.append({
+            "id": pid or real.get("product_id", ""),
+            "name": p.get("name") or real.get("name") or "",
+            "price": p.get("price") or real.get("price") or "",
+            "category": p.get("category") or real.get("category") or "",
+            "image_url": (p.get("image_url") or real.get("image_url") or "").split("?")[0],
+            "url": p.get("url") or real.get("url") or "",
+        })
+    result["products"] = clean_products
 
     # 6. Registra interação no tracking
     try:
