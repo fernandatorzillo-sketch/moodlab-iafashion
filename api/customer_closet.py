@@ -35,7 +35,7 @@ async def stylist_chat(payload: StylistChatRequest):
     import re as _re
     import os as _os
 
-    email = normalize_email(payload.email)
+    email = str(payload.email or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="E-mail é obrigatório")
     message = str(payload.message or "").strip()
