@@ -258,20 +258,33 @@ CATÁLOGO EM ESTOQUE:
 
 MISSÃO: Monte um look COERENTE COM A OCASIÃO pedida (mín. 3, máx. {limit} peças).
 
-CLASSIFICAÇÃO DA OCASIÃO DO PEDIDO:
-- Festa / Jantar / Evento / Balada / Formatura → look elegante: VESTIDO ou CONJUNTO (blusa+calça/saia) + CALCADO (scarpin/sandália) + BOLSA/ACESSÓRIO. NUNCA sugira biquíni/sutiã para festa.
-- Praia / Resort / Piscina / Mar → look praia: PRAIA_TOP + PRAIA_BOTTOM DO MESMO MIX + SAIDA + SANDÁLIA
-- Maiô / Body → MAIO (peça inteira) + SAIDA + SANDÁLIA/ACESSÓRIO. NUNCA sugira calcinha separada com maiô.
-- Casual / Passeio / Dia a dia → look casual: TOP ou BLUSA + BOTTOM (calça/saia/short) + SANDÁLIA
-- Viagem → look versátil: peças que combinam entre si
+CLASSIFICAÇÃO DA OCASIÃO → ESTRUTURA DO LOOK:
+
+FESTA / JANTAR / EVENTO / BARCO / IATE / FORMATURA:
+  Opção A (peça única): VESTIDO ou MACACÃO + CALCADO elegante + BOLSA + ACESSÓRIO
+  Opção B (combinado): BLUSA ou TOP sofisticado + CALÇA ou SAIA MIDI + CALCADO + BOLSA
+  → Sempre inclua 1 opção com SAIA quando disponível no catálogo
+  → ZERO biquíni, ZERO sutiã praia, ZERO calcinha praia
+
+PRAIA / RESORT / PISCINA / MAR:
+  Opção A (peça inteira): MAIO + SAIDA (mesma coleção OU lisa neutra que combine) + SANDÁLIA
+  Opção B (conjunto): PRAIA_TOP + PRAIA_BOTTOM da MESMA COLEÇÃO + SAIDA + SANDÁLIA
+  → Pareamento obrigatório: "Báltico Marrom" + "Báltico Marrom". NUNCA misture estampas.
+  → Se não houver saída da mesma coleção, use saída LISA em cor neutra (off white, bege, preto)
+
+CASUAL / PASSEIO:
+  TOP ou BLUSA + CALÇA ou SAIA ou SHORT + SANDÁLIA + ACESSÓRIO
 
 REGRAS ABSOLUTAS DE PAREAMENTO:
-1. FESTA/JANTAR = ZERO biquíni, ZERO sutiã, ZERO calcinha de praia — use vestidos, conjuntos, calças.
-2. Se sugerir PRAIA_TOP (sutiã/top praia), a calcinha DEVE ser da MESMA COLEÇÃO/MIX. Ex: Sutiã "Báltico" → Calcinha "Báltico". NUNCA misture coleções diferentes.
-3. Calcinha de praia SÓ acompanha top/sutiã de praia do mesmo mix. NUNCA isolada.
-4. Verifique os campos NOME dos produtos — o nome da coleção deve bater entre sutiã e calcinha.
+1. Maiô + saída: MESMA coleção/estampa OU saída lisa neutra. NUNCA estampas diferentes.
+2. Sutiã + calcinha: MESMO nome no campo NOME (ex: "Báltico" com "Báltico"). OBRIGATÓRIO.
+3. NUNCA misture estampas diferentes em peças pareadas (ex: Copa + Báltico = ERRADO).
+4. Verifique COLECAO: e NOME: — devem ser iguais entre peças pareadas.
+5. Peça lisa + peça estampada: OK se forem mesma cor principal.
 
-MENSAGEM: Máx. 2 frases. Mencione a ocasião e que selecionou baseado no histórico e guarda-roupa.
+VARIEDADE: Quando possível, inclua 1 peça única (vestido/maiô/macacão) + 1 combinação (top+saia ou blusa+calça).
+
+MENSAGEM: 2 frases calorosas. Mencione que selecionou baseado no histórico e guarda-roupa da cliente.
 
 RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
 {{"message":"frase calorosa máx 2 linhas mencionando histórico e complemento do guarda-roupa","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","category":"CAT exato","image_url":"IMG exata","url":"URL exata"}}]}}"""

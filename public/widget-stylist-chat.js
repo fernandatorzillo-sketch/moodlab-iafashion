@@ -419,79 +419,58 @@
   }
 
   // ── Estado persistente via sessionStorage ────────────────────────────────
-  const STORAGE_PREFIX = "ml_stylist_";
+  // ── Persistência leve por sessão de navegação ──────────────────────────
+  // Usa sessionStorage com chave fixa — conversa persiste entre páginas
+  // mas não entre sessões diferentes do browser (privacidade OK)
+  const STORAGE_KEY = "ml_ps_conv";
 
-  // Chave isolada por email — evita compartilhar conversa entre contas
-  function getStorageKey(email) {
-    const safe = (email || "anon").replace(/[^a-z0-9]/gi, "_").toLowerCase().slice(0, 30);
-    return STORAGE_PREFIX + safe;
+  function _storageSave(email, emailConfirmed, messages) {
+    try {
+      // Salva só texto + referência mínima de produtos (sem imagens pesadas)
+      const lightMsgs = messages.slice(-8).map(m => {
+        if (m.type !== "products") return m;
+        return {
+          type: "products",
+          products: (m.products || []).slice(0, 4).map(p => ({
+            id: p.id, name: p.name, price: p.price,
+            url: p.url, image_url: p.image_url,
+            category: p.category,
+          }))
+        };
+      });
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        email, emailConfirmed, messages: lightMsgs
+      }));
+    } catch (_) {}
   }
 
-  function loadState(email) {
+  function _storageLoad() {
     try {
-      const key = getStorageKey(email);
-      const saved = sessionStorage.getItem(key);
-      if (saved) return JSON.parse(saved);
-    } catch (_) {}
-    return null;
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
   }
 
   function saveState(s) {
-    try {
-      const key = getStorageKey(s.email);
-      // Limita a 10 mensagens e descarta produtos pesados se necessário
-      const msgs = s.messages.slice(-10);
-      const payload = JSON.stringify({
-        email: s.email,
-        emailConfirmed: s.emailConfirmed,
-        messages: msgs,
-        open: false,
-      });
-      // Se muito grande (>50KB), salva só texto
-      if (payload.length > 50000) {
-        const textOnly = msgs.filter(m => m.type !== "products");
-        sessionStorage.setItem(key, JSON.stringify({
-          email: s.email,
-          emailConfirmed: s.emailConfirmed,
-          messages: textOnly.slice(-6),
-          open: false,
-        }));
-      } else {
-        sessionStorage.setItem(key, payload);
-      }
-    } catch (_) {
-      // Se falhar (ex: storage cheio), não trava
-    }
+    _storageSave(s.email, s.emailConfirmed, s.messages);
   }
 
-  function clearOtherSessions(currentEmail) {
-    // Remove sessões de outros emails ao iniciar
-    try {
-      const keys = Object.keys(sessionStorage);
-      for (const k of keys) {
-        if (k.startsWith(STORAGE_PREFIX) && k !== getStorageKey(currentEmail)) {
-          sessionStorage.removeItem(k);
-        }
-      }
-    } catch (_) {}
-  }
-
+  // Carrega conversa salva
+  const _saved = _storageLoad();
   const _loggedEmail = getLoggedEmail();
-  // Tenta recuperar estado do email logado ou de qualquer sessão salva
-  const _saved = loadState(_loggedEmail) || loadState("");
-  const _initialEmail = _loggedEmail || (_saved && _saved.email) || "";
-  const _saved2 = _initialEmail ? loadState(_initialEmail) : _saved;
+
+  // Se email logado mudou em relação ao salvo, descarta conversa antiga
+  const _savedIsValid = _saved && (
+    !_loggedEmail || !_saved.email || _saved.email === _loggedEmail
+  );
 
   const state = {
     open: false,
-    email: _initialEmail,
-    emailConfirmed: !!(_loggedEmail || (_saved2 && _saved2.emailConfirmed && _saved2.email === _initialEmail)),
+    email: _loggedEmail || (_savedIsValid && _saved.email) || "",
+    emailConfirmed: !!(_loggedEmail || (_savedIsValid && _saved.emailConfirmed)),
     loading: false,
-    messages: (_saved2 && _saved2.email === _initialEmail && _saved2.messages) || [],
+    messages: (_savedIsValid && _saved.messages) || [],
   };
-
-  // Limpa sessões de outros emails
-  if (_initialEmail) clearOtherSessions(_initialEmail);
 
   // ── Cria DOM ────────────────────────────────────────────────────────────────
   function buildUI() {
@@ -633,11 +612,10 @@
     // Se email mudou, limpa conversa anterior
     if (state.email && state.email !== email) {
       state.messages = [];
-      document.getElementById("ml-messages").innerHTML = "";
+      try { document.getElementById("ml-messages").innerHTML = ""; } catch(_) {}
     }
     state.email = email;
     state.emailConfirmed = true;
-    clearOtherSessions(email);
     saveState(state);
     showInputBar();
     addBotMessage(`Ótimo, ${email.split("@")[0]}! Me conta o que você está procurando. 🌿`);
