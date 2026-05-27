@@ -181,9 +181,15 @@ async def stylist_chat(payload: StylistChatRequest):
     # 2. Busca produtos disponíveis no catálogo
     try:
         recs_data = await get_customer_recommendations(
-            email=email, occasion="", goal="novidades", style="", limit=30
+            email=email, occasion="", goal="novidades", style="", limit=40
         )
-        catalog_products = recs_data.get("recommendations") or []
+        # Filtra produtos com imagem e URL válidos
+        all_recs = recs_data.get("recommendations") or []
+        catalog_products = [
+            p for p in all_recs
+            if (p.get("image_url") or p.get("imagem_url"))
+            and (p.get("url") or p.get("product_url"))
+        ] or all_recs  # fallback sem filtro se nenhum tiver imagem
     except Exception:
         catalog_products = []
 
@@ -208,10 +214,17 @@ async def stylist_chat(payload: StylistChatRequest):
     style_summary = "\n".join(style_parts)
 
     def _safe_url(u):
-        u = str(u or "").strip()
+        """Garante URL de PDP válida no domínio aguadecoco.com.br com /p no final."""
+        u = str(u or "").strip().rstrip("/")
         if not u: return ""
-        if u.startswith("/"): return "https://www.aguadecoco.com.br" + u
-        if not u.startswith("http"): return "https://www.aguadecoco.com.br/" + u
+        # Reconstrói domínio correto
+        if u.startswith("/"): u = "https://www.aguadecoco.com.br" + u
+        elif not u.startswith("http"): u = "https://www.aguadecoco.com.br/" + u
+        # Remove query string
+        if "?" in u: u = u.split("?")[0]
+        # Garante /p no final para PDP VTEX
+        if not u.endswith("/p") and not u.endswith(".br") and "/Sistema/" not in u:
+            u = u + "/p"
         return u
 
     catalog_lines = [

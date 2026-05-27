@@ -114,12 +114,12 @@
       /* ── Painel de chat ── */
       #ml-chat-panel {
         position: fixed;
-        bottom: 190px;
+        top: 80px;
         right: 44px;
         z-index: 99998;
         width: 420px;
         max-width: calc(100vw - 52px);
-        max-height: 82vh;
+        max-height: calc(100vh - 100px);
         background: ${BRAND.bg};
         border: 1px solid ${BRAND.border};
         border-radius: ${BRAND.radius};
@@ -128,13 +128,13 @@
         flex-direction: column;
         overflow: hidden;
         font-family: 'Georgia', serif;
-        transform: translateX(20px) scale(0.97);
+        transform: translateX(30px);
         opacity: 0;
         pointer-events: none;
-        transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+        transition: all 0.22s ease;
       }
       #ml-chat-panel.ml-open {
-        transform: translateX(0) scale(1);
+        transform: translateX(0);
         opacity: 1;
         pointer-events: all;
       }
@@ -387,9 +387,9 @@
       @media (max-width: 480px) {
         #ml-chat-panel {
           right: 40px;
-          bottom: 50px;
+          top: 60px;
           width: calc(100vw - 52px);
-          max-height: 75vh;
+          max-height: calc(100vh - 80px);
         }
         #ml-fab-btn { font-size: 10px; padding: 12px 7px; }
       }
