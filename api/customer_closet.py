@@ -189,7 +189,11 @@ async def stylist_chat(payload: StylistChatRequest):
             p for p in all_recs
             if (p.get("image_url") or p.get("imagem_url"))
             and (p.get("url") or p.get("product_url"))
-        ] or all_recs  # fallback sem filtro se nenhum tiver imagem
+            and (p.get("price") or p.get("preco"))  # só com preço
+        ] or [
+            p for p in all_recs
+            if (p.get("image_url") or p.get("imagem_url"))
+        ] or all_recs
     except Exception:
         catalog_products = []
 
@@ -233,16 +237,36 @@ async def stylist_chat(payload: StylistChatRequest):
         if not v:
             return ""
         try:
-            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_val = float(v)
+            if f_val <= 0:
+                return ""
+            # Formata: 299.0 → "R$ 299,00"
+            cents = round(f_val * 100)
+            reais = cents // 100
+            centavos = cents % 100
+            return f"R$ {reais:,}".replace(",", ".") + f",{centavos:02d}"
         except Exception:
             return str(v)
+
+    def _clean_img(url: str) -> str:
+        """Limpa URL de imagem VTEX: remove query string, troca 728-1090 por 500-500."""
+        if not url:
+            return ""
+        url = str(url).strip()
+        # Remove query string (?v=...)
+        if "?" in url:
+            url = url.split("?")[0]
+        # Substitui dimensão grande por 500x500
+        import re
+        url = re.sub(r"-\d+-\d+(/)", r"-500-500\1", url)
+        return url
 
     catalog_lines = [
         f"- ID:{p.get('product_id') or p.get('id')} | "
         f"NOME:{p.get('name', '')} | "
         f"PRECO:{_fmt_price(p)} | "
         f"CAT:{p.get('category', '')} | "
-        f"IMG:{p.get('image_url') or p.get('imagem_url') or ''} | "
+        f"IMG:{_clean_img(p.get('image_url') or p.get('imagem_url') or '')} | "
         f"URL:{_safe_url(p.get('url') or p.get('product_url') or p.get('link') or '')}"
         for p in catalog_products[:20]
         if p.get('name')  # só inclui produtos com nome
