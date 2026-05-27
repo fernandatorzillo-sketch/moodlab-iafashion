@@ -288,6 +288,15 @@
       .ml-card-price-de s {
         text-decoration: line-through;
       }
+      .ml-card-complement {
+        font-size: 10px;
+        color: ${BRAND.gold};
+        font-weight: 700;
+        text-align: center;
+        padding: 3px 8px 0;
+        font-family: 'Arial', sans-serif;
+        letter-spacing: 0.3px;
+      }
       .ml-card-btn {
         display: block;
         margin: 6px 8px 8px;
@@ -409,12 +418,35 @@
     document.head.appendChild(style);
   }
 
-  // ── Estado ──────────────────────────────────────────────────────────────────
+  // ── Estado persistente via sessionStorage ────────────────────────────────
+  const STORAGE_KEY = "ml_stylist_state";
+
+  function loadState() {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return null;
+  }
+
+  function saveState(s) {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        email: s.email,
+        emailConfirmed: s.emailConfirmed,
+        messages: s.messages,   // array de {type, text, products}
+        open: false,             // sempre fecha ao navegar
+      }));
+    } catch (_) {}
+  }
+
+  const _saved = loadState();
   const state = {
     open: false,
-    email: getLoggedEmail(),
-    emailConfirmed: !!getLoggedEmail(),
+    email: getLoggedEmail() || (_saved && _saved.email) || "",
+    emailConfirmed: !!(getLoggedEmail() || (_saved && _saved.emailConfirmed)),
     loading: false,
+    messages: (_saved && _saved.messages) || [],  // histórico da conversa
   };
 
   // ── Cria DOM ────────────────────────────────────────────────────────────────
@@ -492,7 +524,12 @@
 
     const messages = document.getElementById("ml-messages");
     if (!messages.children.length) {
-      if (state.emailConfirmed) {
+      // Restaura conversa anterior se existir
+      if (state.messages && state.messages.length > 0) {
+        restoreMessages();
+        if (state.emailConfirmed) showInputBar();
+        else showEmailGate();
+      } else if (state.emailConfirmed) {
         showInputBar();
         addBotMessage("Olá! ✨ Sou sua personal shopper da Água de Coco. Me conta o que você procura — posso sugerir peças do seu estilo, completar um look ou mostrar as novidades.");
       } else {
@@ -504,6 +541,18 @@
       const input = document.getElementById("ml-text-input");
       if (input && state.emailConfirmed) input.focus();
     }, 300);
+  }
+
+  function restoreMessages() {
+    const messages = document.getElementById("ml-messages");
+    messages.innerHTML = "";
+    for (const msg of state.messages) {
+      if (msg.type === "bot") addBotMessage(msg.text);
+      else if (msg.type === "user") addUserMessage(msg.text);
+      else if (msg.type === "products" && msg.products) addProductCarousel(msg.products);
+    }
+    // Scroll to bottom
+    setTimeout(() => { messages.scrollTop = messages.scrollHeight; }, 50);
   }
 
   function closePanel() {
@@ -531,24 +580,33 @@
     }
     state.email = email;
     state.emailConfirmed = true;
+    saveState(state);
     showInputBar();
     addBotMessage(`Ótimo, ${email.split("@")[0]}! Me conta o que você está procurando. 🌿`);
     setTimeout(() => document.getElementById("ml-text-input")?.focus(), 100);
   }
 
   // ── Mensagens ───────────────────────────────────────────────────────────────
-  function addBotMessage(text) {
+  function addBotMessage(text, save = true) {
     const div = document.createElement("div");
     div.className = "ml-msg ml-bot";
     div.textContent = text;
     appendMsg(div);
+    if (save) {
+      state.messages.push({ type: "bot", text });
+      saveState(state);
+    }
   }
 
-  function addUserMessage(text) {
+  function addUserMessage(text, save = true) {
     const div = document.createElement("div");
     div.className = "ml-msg ml-user";
     div.textContent = text;
     appendMsg(div);
+    if (save) {
+      state.messages.push({ type: "user", text });
+      saveState(state);
+    }
   }
 
   function addTyping() {
@@ -638,6 +696,14 @@
       `;
       card.appendChild(body);
 
+      // Badge complemento
+      if (p.is_complement) {
+        const badge = document.createElement("div");
+        badge.className = "ml-card-complement";
+        badge.textContent = "✦ Completa seu look";
+        card.appendChild(badge);
+      }
+
       // Botão
       const btn = document.createElement("a");
       btn.className = "ml-card-btn";
@@ -656,6 +722,9 @@
     scrollWrap.appendChild(carousel);
     wrapper.appendChild(scrollWrap);
     appendMsg(wrapper);
+    // Salva produtos no histórico
+    state.messages.push({ type: "products", products });
+    saveState(state);
   }
 
   // ── Tracking de conversão ───────────────────────────────────────────────────

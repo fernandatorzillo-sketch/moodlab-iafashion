@@ -166,17 +166,105 @@ async def stylist_chat(payload: StylistChatRequest):
 
     limit = max(1, min(int(payload.limit or 6), 12))
 
-    # 1. Busca contexto do cliente (closet + pedidos)
+    # 1. Busca perfil completo da cliente direto do banco
+    client_name = email.split("@")[0]
+    profile = {
+        "colors": [],        # cores mais compradas
+        "sizes": [],         # tamanhos mais usados
+        "prints": [],        # preferência de estampa
+        "categories": [],    # categorias mais compradas
+        "collections": [],   # coleções favoritas
+        "top_items": [],     # peças mais compradas (nome + categoria)
+        "top_pieces": {},    # top/sutia comprados → para sugerir calcinhas do mesmo mix
+    }
+
     try:
         client_data = await get_customer_closet_payload(email)
+        customer = client_data.get("customer") or {}
+        client_name = customer.get("name") or client_name
     except Exception:
         client_data = {}
 
-    customer = client_data.get("customer") or {}
-    closet = client_data.get("closet") or []
-    orders = client_data.get("orders") or []
-    style_prefs = client_data.get("style_preferences") or {}
-    client_name = customer.get("name") or email.split("@")[0]
+    try:
+        from services.closet_db import AsyncSessionLocal as _SL
+        from models.customer_closet_item import CustomerClosetItem as _CCI
+        from models.catalog_product import CatalogProduct as _CP
+        from sqlalchemy import select as _sel, and_ as _and, func as _func
+
+        async with _SL() as _db:
+            # Busca closet enriquecido com dados do catálogo
+            _closet_stmt = (
+                _sel(_CCI, _CP.color, _CP.size, _CP.print_name,
+                     _CP.collection, _CP.occasion, _CP.category.label("cat_category"))
+                .outerjoin(_CP, _CP.sku_id == _CCI.sku_id)
+                .where(_CCI.email == email)
+                .order_by(_CCI.purchase_count.desc())
+                .limit(50)
+            )
+            _rows = (await _db.execute(_closet_stmt)).all()
+
+            from collections import Counter
+            _color_ctr = Counter()
+            _size_ctr = Counter()
+            _print_ctr = Counter()
+            _cat_ctr = Counter()
+            _coll_ctr = Counter()
+            _top_pieces = []
+            _tops = []  # sutias/tops para parear calcinhas
+
+            for _r in _rows:
+                _item = _r[0]
+                _color = _r[1]
+                _size = _r[2]
+                _print = _r[3]
+                _coll = _r[4]
+                _cat = _r[5] or _item.category or ""
+
+                if _color: _color_ctr[_color.strip().lower()] += (_item.purchase_count or 1)
+                if _size:  _size_ctr[_size.strip().upper()] += (_item.purchase_count or 1)
+                if _print: _print_ctr[_print.strip().lower()] += 1
+                if _cat:   _cat_ctr[_cat.strip().lower()] += (_item.purchase_count or 1)
+                if _coll:  _coll_ctr[_coll.strip().lower()] += 1
+
+                if _item.name:
+                    _top_pieces.append(f"{_item.name} ({_cat})")
+                    _name_lower = (_item.name or "").lower()
+                    if any(t in _name_lower for t in ["sutiã","sutia","top","cropped","frente única","bandeau","faixa"]):
+                        _tops.append({
+                            "name": _item.name,
+                            "collection": _coll or "",
+                            "category": _cat,
+                        })
+
+            profile["colors"] = [c for c, _ in _color_ctr.most_common(5)]
+            profile["sizes"] = [s for s, _ in _size_ctr.most_common(3)]
+            profile["prints"] = [p for p, _ in _print_ctr.most_common(3)]
+            profile["categories"] = [c for c, _ in _cat_ctr.most_common(5)]
+            profile["collections"] = [c for c, _ in _coll_ctr.most_common(3)]
+            profile["top_items"] = _top_pieces[:8]
+            profile["top_pieces"] = _tops[:3]  # tops/sutias para parear
+
+    except Exception as _profile_err:
+        pass  # profile fica vazio, IA ainda funciona
+
+    # Monta resumo do perfil para o prompt
+    def _profile_line(label, items):
+        return f"{label}: {', '.join(items)}" if items else ""
+
+    profile_lines = [
+        _profile_line("Cores favoritas", profile["colors"]),
+        _profile_line("Tamanhos", profile["sizes"]),
+        _profile_line("Estampas preferidas", profile["prints"]),
+        _profile_line("Categorias mais compradas", profile["categories"]),
+        _profile_line("Coleções favoritas", profile["collections"]),
+    ]
+    if profile["top_items"]:
+        profile_lines.append(f"Peças no closet: {'; '.join(profile['top_items'][:5])}")
+    if profile["top_pieces"]:
+        tops_str = "; ".join(f"{t['name']} (coleção: {t['collection']})" for t in profile["top_pieces"])
+        profile_lines.append(f"Tops/Sutiãs que já tem (sugerir calcinhas do mesmo mix): {tops_str}")
+
+    client_profile = "\n".join(l for l in profile_lines if l)
 
     # 2. Busca produtos direto do banco — garante image_url, price e product_url reais
     catalog_products = []
@@ -319,22 +407,38 @@ async def stylist_chat(payload: StylistChatRequest):
 
     page_ctx = f"\nContexto da página: {payload.page_context}" if payload.page_context else ""
 
-    system_prompt = f"""Você é uma personal shopper da Água de Coco. Responda SEMPRE em português.
+    # Analisa se os produtos sugeridos complementam o closet ou são novos
+    has_profile = bool(profile.get("top_items") or profile.get("colors"))
 
-CONTEXTO DA CLIENTE:
-{closet_summary}
-{orders_summary}
-{style_summary}
+    system_prompt = f"""Você é uma personal shopper especialista da Água de Coco, marca brasileira de moda praia e resort wear de luxo.
+Responda SEMPRE em português do Brasil, com tom caloroso e sofisticado, como uma vendedora de boutique de alto padrão.
+
+PERFIL DA CLIENTE {client_name}:
+{client_profile}
 {page_ctx}
 
 CATÁLOGO DISPONÍVEL PARA VENDA (produtos em estoque):
 {catalog_summary}
 
-TAREFA: A cliente fez uma pergunta. Escolha {limit} produtos do CATÁLOGO ACIMA que melhor respondam ao pedido dela.
+ESTRATÉGIA DE CURADORIA — siga esta ordem de prioridade:
+1. COMPLEMENTO DO GUARDA-ROUPA: se a cliente tem peças no closet, priorize produtos que completem looks já existentes.
+   Exemplo: tem sutiã Bananas → sugira calcinha Bananas + saída Bananas.
+2. LOOK COMPLETO: SEMPRE tente montar um look completo com 3-5 peças quando possível:
+   - Praia/Resort: top/sutiã + calcinha + saída de praia/canga + sandália/rasteira + bolsa/chapéu
+   - Casual/Passeio: blusa/vestido + calça/saia + sandália + acessório
+   - Jantar/Festa: vestido/conjunto + sandália/scarpin + bolsa/acessório
+3. PERSONALIZAÇÃO: priorize as cores favoritas e tamanho habitual da cliente.
+4. NOVIDADES: inclua pelo menos 1 peça nova que ela ainda não tem.
+
+MENSAGEM PERSONALIZADA — use este raciocínio na mensagem:
+- Se tem histórico: "Separei peças de acordo com suas compras anteriores e tamanho {profile.get('sizes', [''])[0] if profile.get('sizes') else ''}..."
+- Se complementa closet: "...e produtos que combinam perfeitamente com o que você já tem no guarda-roupa."
+- Se é novidade: "...além de novidades que combinam com o seu estilo."
+- Máximo 2 frases, caloroso e direto.
 
 FORMATO DA RESPOSTA — retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
 {{
-  "message": "uma frase consultiva calorosa em português (máximo 2 frases)",
+  "message": "mensagem personalizada seguindo o raciocínio acima",
   "products": [
     {{
       "id": "copie o valor após ID:",
@@ -342,17 +446,19 @@ FORMATO DA RESPOSTA — retorne SOMENTE este JSON, sem nenhum texto antes ou dep
       "price": "copie o valor após PRECO:",
       "category": "copie o valor após CAT:",
       "image_url": "copie a URL completa após IMG:",
-      "url": "copie a URL completa após URL:"
+      "url": "copie a URL completa após URL:",
+      "is_complement": true
     }}
   ]
 }}
 
-REGRAS:
-- Use APENAS produtos do catálogo listado acima.
-- Copie os campos EXATAMENTE como estão — não invente preços, imagens ou URLs.
-- Se não houver produtos adequados, retorne products como lista vazia [].
+REGRAS TÉCNICAS OBRIGATÓRIAS:
+- Use APENAS produtos do catálogo listado acima — NUNCA invente produtos.
+- Copie ID, NOME, PRECO, CAT, IMG e URL EXATAMENTE como estão no catálogo.
+- NUNCA invente preços, imagens ou URLs.
 - NUNCA retorne texto fora do JSON.
 - NUNCA use markdown ou blocos de código.
+- is_complement = true se a peça complementa algo do closet, false se é novidade.
 """
 
     user_prompt = f"Cliente {client_name} disse: \"{message}\""
