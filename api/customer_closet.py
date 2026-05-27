@@ -230,19 +230,21 @@ Responda sempre em português, de forma calorosa e consultiva. Máximo 2 frases 
 
 {catalog_summary}
 
-REGRAS:
-- Sugira entre 2 e {limit} produtos do catálogo acima que mais combinem com o pedido da cliente.
+REGRAS CRÍTICAS:
+- Sugira entre 2 e {limit} produtos EXCLUSIVAMENTE do catálogo listado acima.
+- Use EXATAMENTE os valores de IMG: e URL: de cada produto — NUNCA invente ou modifique URLs.
+- Se IMG: estiver vazio, deixe image_url como string vazia "".
 - Retorne APENAS um JSON válido no formato abaixo, sem texto adicional antes ou depois:
 {{
   "message": "frase consultiva personalizada (máx 2 frases)",
   "products": [
     {{
-      "id": "id do produto",
-      "name": "nome",
-      "price": "preço ex: R$ 299,00",
-      "category": "categoria",
-      "image_url": "url da imagem",
-      "url": "url do produto no site"
+      "id": "valor exato do campo ID:",
+      "name": "valor exato do campo nome",
+      "price": "valor exato do campo PRECO:",
+      "category": "valor exato do campo CAT:",
+      "image_url": "valor exato do campo IMG: — copie sem alterar",
+      "url": "valor exato do campo URL: — copie sem alterar"
     }}
   ]
 }}"""

@@ -117,8 +117,8 @@
         bottom: 190px;
         right: 44px;
         z-index: 99998;
-        width: 390px;
-        max-width: calc(100vw - 56px);
+        width: 420px;
+        max-width: calc(100vw - 52px);
         max-height: 82vh;
         background: ${BRAND.bg};
         border: 1px solid ${BRAND.border};
@@ -222,6 +222,8 @@
         scrollbar-width: thin;
         scrollbar-color: ${BRAND.border} transparent;
         -webkit-overflow-scrolling: touch;
+        cursor: grab;
+        user-select: none;
       }
       .ml-carousel-wrap::-webkit-scrollbar { height: 4px; }
       .ml-carousel-wrap::-webkit-scrollbar-track { background: transparent; }
@@ -230,7 +232,7 @@
       .ml-carousel { display: flex; gap: 10px; width: max-content; padding: 2px; }
 
       .ml-card {
-        width: 148px;
+        width: 160px;
         background: ${BRAND.white};
         border: 1px solid ${BRAND.border};
         border-radius: 12px;
@@ -244,14 +246,14 @@
 
       .ml-card-img {
         width: 100%;
-        height: 120px;
+        height: 140px;
         object-fit: cover;
         display: block;
         background: #f5f0ea;
       }
       .ml-card-img-placeholder {
         width: 100%;
-        height: 120px;
+        height: 140px;
         background: linear-gradient(135deg, #f5efe0 0%, #e8dece 100%);
         display: flex;
         align-items: center;
