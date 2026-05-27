@@ -209,10 +209,10 @@ async def stylist_chat(payload: StylistChatRequest):
 
     catalog_lines = [
         f"- ID:{p.get('id') or p.get('product_id')} | {p.get('name', '')} | "
-        f"R$ {p.get('price') or p.get('preco') or '?'} | "
-        f"cat:{p.get('category', '')} | "
-        f"img:{p.get('image_url') or p.get('imagem_url', '')} | "
-        f"url:{p.get('url') or p.get('link', '')}"
+        f"PRECO:R$ {p.get('price') or p.get('preco') or '?'} | "
+        f"CAT:{p.get('category', '')} | "
+        f"IMG:{p.get('image_url') or p.get('imagem_url') or ''} | "
+        f"URL:{p.get('url') or p.get('product_url') or p.get('link') or ''}"
         for p in catalog_products[:20]
     ]
     catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
@@ -258,10 +258,10 @@ REGRAS:
             {
                 "id": str(p.get("id") or p.get("product_id") or ""),
                 "name": p.get("name") or p.get("nome") or "",
-                "price": str(p.get("price") or p.get("preco") or ""),
+                "price": f"R$ {p.get('price') or p.get('preco') or ''}" if (p.get("price") or p.get("preco")) else "",
                 "category": p.get("category") or p.get("categoria") or "",
                 "image_url": p.get("image_url") or p.get("imagem_url") or "",
-                "url": p.get("url") or p.get("link") or "",
+                "url": p.get("url") or p.get("product_url") or p.get("link") or "",
             }
             for p in catalog_products[:limit]
         ]
