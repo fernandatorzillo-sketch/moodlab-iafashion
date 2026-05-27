@@ -56,7 +56,7 @@
       #ml-fab-sidebar {
         position: fixed;
         right: 0;
-        bottom: 100px; /* acima do botão AJUDA que fica em ~bottom:48px */
+        bottom: 230px; /* acima do botão AJUDA do MyCatwalk */
         z-index: 99997;
         display: flex;
         flex-direction: column;
@@ -114,7 +114,7 @@
       /* ── Painel de chat ── */
       #ml-chat-panel {
         position: fixed;
-        bottom: 60px;
+        bottom: 190px;
         right: 44px;
         z-index: 99998;
         width: 390px;
