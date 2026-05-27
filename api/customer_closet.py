@@ -407,8 +407,10 @@ async def stylist_chat(payload: StylistChatRequest):
 
     page_ctx = f"\nContexto da página: {payload.page_context}" if payload.page_context else ""
 
-    # Analisa se os produtos sugeridos complementam o closet ou são novos
+    # Pré-computa strings para usar no f-string sem conflito de aspas
     has_profile = bool(profile.get("top_items") or profile.get("colors"))
+    client_size_hint = profile["sizes"][0] if profile.get("sizes") else ""
+    size_mention = f"tamanho {client_size_hint}" if client_size_hint else "suas medidas habituais"
 
     system_prompt = f"""Você é uma personal shopper especialista da Água de Coco, marca brasileira de moda praia e resort wear de luxo.
 Responda SEMPRE em português do Brasil, com tom caloroso e sofisticado, como uma vendedora de boutique de alto padrão.
@@ -431,7 +433,7 @@ ESTRATÉGIA DE CURADORIA — siga esta ordem de prioridade:
 4. NOVIDADES: inclua pelo menos 1 peça nova que ela ainda não tem.
 
 MENSAGEM PERSONALIZADA — use este raciocínio na mensagem:
-- Se tem histórico: "Separei peças de acordo com suas compras anteriores e tamanho {profile.get('sizes', [''])[0] if profile.get('sizes') else ''}..."
+- Se tem histórico: "Separei peças de acordo com suas compras anteriores e {size_mention}..."
 - Se complementa closet: "...e produtos que combinam perfeitamente com o que você já tem no guarda-roupa."
 - Se é novidade: "...além de novidades que combinam com o seu estilo."
 - Máximo 2 frases, caloroso e direto.
