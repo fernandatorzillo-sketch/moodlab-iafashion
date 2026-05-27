@@ -207,12 +207,19 @@ async def stylist_chat(payload: StylistChatRequest):
         style_parts.append(f"Ocasiões: {', '.join(style_prefs['ocasioes'])}")
     style_summary = "\n".join(style_parts)
 
+    def _safe_url(u):
+        u = str(u or "").strip()
+        if not u: return ""
+        if u.startswith("/"): return "https://www.aguadecoco.com.br" + u
+        if not u.startswith("http"): return "https://www.aguadecoco.com.br/" + u
+        return u
+
     catalog_lines = [
         f"- ID:{p.get('id') or p.get('product_id')} | {p.get('name', '')} | "
         f"PRECO:R$ {p.get('price') or p.get('preco') or '?'} | "
         f"CAT:{p.get('category', '')} | "
         f"IMG:{p.get('image_url') or p.get('imagem_url') or ''} | "
-        f"URL:{p.get('url') or p.get('product_url') or p.get('link') or ''}"
+        f"URL:{_safe_url(p.get('url') or p.get('product_url') or p.get('link') or '')}"
         for p in catalog_products[:20]
     ]
     catalog_summary = ("Produtos disponíveis no catálogo:\n" + "\n".join(catalog_lines)) if catalog_lines else ""
@@ -234,6 +241,7 @@ REGRAS CRÍTICAS:
 - Sugira entre 2 e {limit} produtos EXCLUSIVAMENTE do catálogo listado acima.
 - Use EXATAMENTE os valores de IMG: e URL: de cada produto — NUNCA invente ou modifique URLs.
 - Se IMG: estiver vazio, deixe image_url como string vazia "".
+- URLs dos produtos SEMPRE começam com https://www.aguadecoco.com.br — copie EXATAMENTE do campo URL:.
 - Retorne APENAS um JSON válido no formato abaixo, sem texto adicional antes ou depois:
 {{
   "message": "frase consultiva personalizada (máx 2 frases)",

@@ -575,10 +575,22 @@
     carousel.className = "ml-carousel";
 
     products.forEach((p) => {
+      // Sanitize URL — fix common AI mistakes like aguadecocobr.com
+      function fixUrl(u) {
+        if (!u) return "#";
+        u = String(u).trim();
+        // Fix missing dot: aguadecocobr.com → aguadecoco.com.br
+        u = u.replace(/aguadecocobr\.com/g, "aguadecoco.com.br");
+        // Ensure https
+        if (u.startsWith("//")) u = "https:" + u;
+        if (!u.startsWith("http") && u.startsWith("/")) u = "https://www.aguadecoco.com.br" + u;
+        return u;
+      }
+
       const card = document.createElement("a");
       card.className = "ml-card";
-      card.href = p.url || "#";
-      card.target = "_top";
+      card.href = fixUrl(p.url);
+      card.target = "_self";
       card.rel = "noopener";
 
       // Imagem do produto
@@ -614,8 +626,8 @@
       // Botão
       const btn = document.createElement("a");
       btn.className = "ml-card-btn";
-      btn.href = p.url || "#";
-      btn.target = "_top";
+      btn.href = fixUrl(p.url);
+      btn.target = "_self";
       btn.textContent = "Ver produto";
       card.appendChild(btn);
 
