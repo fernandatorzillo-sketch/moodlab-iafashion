@@ -105,9 +105,10 @@ async def stylist_chat(payload: StylistChatRequest):
     if not message:
         raise HTTPException(status_code=400, detail="Mensagem é obrigatória")
 
-    client_name  = email.split("@")[0]
-    profile_text = ""
-    memory_text  = ""
+    client_name   = email.split("@")[0]
+    profile_text  = ""
+    memory_text   = ""
+    client_gender = ""  # detectado pelo closet — MASCULINO / FEMININO / UNISSEX
 
     # ── 1. Perfil da cliente — closet + pedidos reais + memória IA ─────────
     # Três fontes em paralelo para máxima personalização:
