@@ -781,7 +781,13 @@
       if (p.image_url && p.image_url.startsWith("http")) {
         const img = document.createElement("img");
         img.className = "ml-card-img";
-        img.src = p.image_url;
+        // Garante URL absoluta
+        const imgUrl = (p.image_url || "").startsWith("http")
+          ? p.image_url
+          : p.image_url
+            ? "https://lojaaguadecoco.vteximg.com.br" + p.image_url
+            : "";
+        img.src = imgUrl;
         img.alt = p.name || "";
         img.loading = "lazy";
         img.decoding = "async";
@@ -913,18 +919,22 @@
       if (data.products?.length) {
         addProductCarousel(data.products);
         maybeShowChips(message, data.products);
+      } else if (data.message) {
+        // Tem mensagem mas sem produtos — mostra só a mensagem, sem erro
       } else {
-        addBotMessage("Não encontrei produtos disponíveis para esse pedido agora. Tente com outras palavras?");
-        addRefinementChips(["🔄 Tentar novamente", "🎨 Mudar a ocasião", "🌊 Ver looks de praia", "💃 Ver looks de festa"]);
+        addBotMessage("Não encontrei produtos para esse pedido. Tente descrever de outra forma?");
       }
     } catch (err) {
       removeTyping();
       addBotMessage("Ops, tive um problema ao buscar sugestões. Tente novamente em instantes.");
       console.error("[MoodLab]", err);
     } finally {
-      state.loading = false;
-      if (input) { input.disabled = false; input.focus(); }
-      document.getElementById("ml-send-btn").disabled = false;
+      // Small delay so rapid re-sends don't conflict with carousel rendering
+      setTimeout(() => {
+        state.loading = false;
+        if (input) { input.disabled = false; }
+        document.getElementById("ml-send-btn").disabled = false;
+      }, 500);
     }
   }
 

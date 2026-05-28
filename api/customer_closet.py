@@ -196,7 +196,13 @@ async def stylist_chat(payload: StylistChatRequest):
                 if not name or not img or not url:
                     continue
                 # Limpa imagem
-                img_clean = _re.sub(r'-\d+-\d+(/)', r'-500-500\1', img.split('?')[0])
+                img_raw = img.split('?')[0].strip() if img else ''
+                if _re.search(r'-\d+-\d+/', img_raw):
+                    img_clean = _re.sub(r'-\d+-\d+(/)', r'-500-500\1', img_raw)
+                elif img_raw.startswith('/'):
+                    img_clean = 'https://lojaaguadecoco.vteximg.com.br' + img_raw
+                else:
+                    img_clean = img_raw
                 # Formata preço
                 try:
                     cents = round(float(price) * 100)
@@ -409,6 +415,7 @@ async def stylist_chat(payload: StylistChatRequest):
     is_cold = any(t in msg_lower for t in ["frio","inverno","tricô","trico","suéter","casaco","blusa fria"])
     is_party = any(t in msg_lower for t in ["festa","balada","jantar","evento","chique","sofisticad","formatura","casamento","aniversario","aniversário","barco","iate","reveillon"])
     is_casual = any(t in msg_lower for t in ["casual","dia a dia","passeio","shopping","trabalho","escritorio"])
+    is_sale = any(t in msg_lower for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato","economizar","menor preço"])
 
     # Filtra produtos incoerentes com o contexto
     filtered_catalog = []
@@ -427,9 +434,13 @@ async def stylist_chat(payload: StylistChatRequest):
         if is_maio:
             if tipo in ("PRAIA_TOP", "PRAIA_BOTTOM") and not is_beach:
                 continue  # remove biquíni se pediu especificamente maiô
-        # PRAIA: remove itens de frio
+        # PRAIA: remove itens de frio E tricô/liso trabalhado de inverno
         if is_beach and not is_party:
             if tipo == "FRIO":
+                continue
+            # Remove peças de lã/tricô mesmo classificadas como SAIDA/TOP
+            p_name_lower = (p.get("name") or "").lower()
+            if any(t in p_name_lower for t in ["tricô","trico","lã ","malha","moletom","cardigan","suéter","sueter"]):
                 continue
         # FRIO: remove biquínis e maiôs
         if is_cold:
@@ -487,9 +498,24 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # SAIDA e complementos recebem mais slots para dar variedade
     per_type_default = max(2, 20 // max(len([t for t in priority_order if by_type[t]]), 1))
+    # Se pediu promoção, filtra só produtos com desconto (list_price > price)
+    if is_sale:
+        sale_products = [p for p in filtered_catalog if p.get("list_price")]
+        if len(sale_products) >= 5:
+            filtered_catalog = sale_products
+        # Reconstrói by_type com sale products
+        by_type = defaultdict(list)
+        for p in filtered_catalog:
+            by_type[p["_tipo"]].append(p)
+
+    # Se pediu explicitamente saída/capa/canga/kimono, prioriza SAIDA com mais slots
+    is_saida_request = any(t in msg_lower for t in [
+        "saída","saida","capa","kimono","canga","túnica","tunica","pareo","kaftan"
+    ])
+
     per_type_map = {
-        "SAIDA": 8,      # muitas opções de saída
-        "VESTIDO": 6,    # vestidos também
+        "SAIDA": 15 if is_saida_request else 8,
+        "VESTIDO": 6,
         "MAIO": 5,
         "PRAIA_TOP": 4,
         "PRAIA_BOTTOM": 4,
@@ -522,14 +548,25 @@ async def stylist_chat(payload: StylistChatRequest):
         if p.get("image_url")
     )
 
-    system_prompt = f"""Você é personal shopper da Água de Coco. Responda em português, tom sofisticado e caloroso.
+    sale_hint = "PROMOÇÃO: O cliente quer peças em promoção. Destaque os descontos (campo DE:) e mencione a economia." if is_sale else ""
+
+    system_prompt = f"""Você é a personal shopper da Água de Coco — marca brasileira de moda praia e resort de luxo.
+Tom: sofisticado, caloroso, SEMPRE orientado à venda. Seu objetivo é converter.
+NUNCA use "querida", "amada", "linda" — chame sempre pelo NOME do cliente.
+Responda SEMPRE em português do Brasil.
+{sale_hint}
 
 CLIENTE: {client_name}
 {memory_text}
 {profile_text}
 {page_ctx}
 
-CATÁLOGO EM ESTOQUE:
+IMPORTANTE: O catálogo abaixo são produtos DISPONÍVEIS PARA COMPRA agora.
+O perfil da cliente acima são peças que ela JÁ POSSUI. São coisas diferentes.
+Se a cliente menciona uma peça que ela tem ("eu comprei", "tenho", "meu biquini"), 
+NÃO diga que não tem em estoque — ela já tem essa peça. Sugira complementos.
+
+CATÁLOGO EM ESTOQUE (disponível para compra):
 {catalog_lines}
 
 MISSÃO: Monte um look COERENTE COM A OCASIÃO pedida (mín. 3, máx. {limit} peças).
@@ -542,13 +579,24 @@ FESTA / JANTAR / EVENTO / BARCO / IATE / FORMATURA:
   → Sempre inclua 1 opção com SAIA quando disponível no catálogo
   → ZERO biquíni, ZERO sutiã praia, ZERO calcinha praia
 
+PRAIA / RESORT:
+  → NUNCA sugira tricô, lã, moletom, cardigan, suéter em looks de praia — independente da categoria
+  → Ocasião SAIDA DE PRAIA + Estamparia LISO TRABALHADO em fibra de malha = FRIO, não sugerir para praia
+
 PRAIA / RESORT / PISCINA / MAR:
   Opção A (peça inteira): MAIO + SAIDA (mesma coleção OU lisa neutra) + SANDÁLIA + ACESSÓRIO
   Opção B (conjunto): PRAIA_TOP + PRAIA_BOTTOM (MESMA COLEÇÃO) + SAIDA + SANDÁLIA
-  → SAÍDA DE PRAIA: inclua MÚLTIPLAS opções (kimono, canga, túnica, vestido, saia) — mín. 2 saídas
-  → Se cliente pediu saída para biquíni camuflado: priorize saídas camufladas, depois lisas neutras
-  → Pareamento: mesma coleção primeiro, depois cor neutra compatível
-  → NUNCA sugira apenas 1 produto quando há mais opções disponíveis no catálogo
+  → SAÍDA DE PRAIA: inclua MÚLTIPLAS opções (kimono, canga, túnica) — mín. 3 saídas quando pedido
+  → Se cliente pediu saída para biquíni camuflado:
+     1. Primeiro: saídas com ESTAMPA camuflado/militar/copa (mesma estampa)
+     2. Depois: saídas LISAS que combinam (verde, marrom, bege, off white, areia)
+  → NUNCA sugira 1 único produto — mínimo 3 opções de saídas diferentes
+  → Cliente menciona peça que JÁ TEM → não diga "não temos em estoque", sugira complementos
+
+PEDIDO DE COMPLEMENTO (cliente tem X, quer Y para combinar):
+  → Foco total em Y (o complemento pedido)
+  → Mencione na mensagem: "Que bom que você tem [X]! Separei [Y] que combinam perfeitamente."
+  → Sugira tanto opções do MESMO estilo/estampa quanto opções LISAS neutras que combinam
 
 CASUAL / PASSEIO:
   TOP ou BLUSA + CALÇA ou SAIA ou SHORT + SANDÁLIA + ACESSÓRIO
@@ -590,7 +638,13 @@ GÊNERO: GENERO:MASCULINO → só peças masculinas ou unissex. Não misturar.
 
 PREÇO: Se campo DE: existir no produto, usar como "list_price" no JSON (preço original com desconto).
 
-MENSAGEM: 2 frases. Mencione histórico, guarda-roupa e tendência de cor quando relevante.
+MENSAGEM: 2 frases diretas e persuasivas.
+- Comece SEMPRE com o nome: "{client_name}," (ex: "Fernanda, separei...")
+- NUNCA use "querida", "amada", "linda" — só o nome
+- Mencione o benefício concreto (combina com X, tendência 2026, desconto de Y%)
+- Tom de vendedora especialista que quer fechar a venda
+- Se é promoção: destaque o valor economizado
+- Se é complemento: "Já que você tem [X], essa [Y] é perfeita para completar o look"
 
 RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
 {{"message":"frase calorosa máx 2 linhas","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","list_price":"DE: se existir, senão vazio","image_url":"IMG exata","url":"URL exata"}}]}}"""
