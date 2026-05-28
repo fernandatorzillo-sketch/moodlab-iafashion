@@ -133,6 +133,42 @@
         pointer-events: none;
         transition: all 0.22s ease;
       }
+      /* Mobile: tela cheia com input sempre visível */
+      @media (max-width: 600px) {
+        #ml-chat-panel {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0 !important;
+          transform: translateY(100%) !important;
+        }
+        #ml-chat-panel.ml-open {
+          transform: translateY(0) !important;
+        }
+        #ml-messages {
+          flex: 1;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 8px !important;
+        }
+        #ml-input-bar {
+          position: sticky !important;
+          bottom: 0 !important;
+          background: ${BRAND.white} !important;
+          border-top: 1px solid ${BRAND.border} !important;
+          padding: 10px 12px env(safe-area-inset-bottom, 8px) !important;
+          flex-shrink: 0 !important;
+          z-index: 10 !important;
+        }
+        #ml-email-gate {
+          padding-bottom: env(safe-area-inset-bottom, 16px) !important;
+        }
+      }
       #ml-chat-panel.ml-open {
         transform: translateX(0);
         opacity: 1;
@@ -296,6 +332,30 @@
         padding: 3px 8px 0;
         font-family: 'Arial', sans-serif;
         letter-spacing: 0.3px;
+      }
+      .ml-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 4px 0 8px;
+        max-width: 100%;
+      }
+      .ml-chip {
+        background: ${BRAND.white};
+        border: 1.5px solid ${BRAND.gold};
+        color: ${BRAND.goldDark || "#9a8a52"};
+        border-radius: 99px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-family: 'Arial', sans-serif;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .ml-chip:hover {
+        background: ${BRAND.gold};
+        color: #fff;
       }
       .ml-card-btn {
         display: block;
@@ -538,12 +598,20 @@
   // ── Toggle ──────────────────────────────────────────────────────────────────
   function togglePanel() { state.open ? closePanel() : openPanel(); }
 
+  function isMobile() { return window.innerWidth <= 600; }
+
   function openPanel() {
     state.open = true;
     const panel = document.getElementById("ml-chat-panel");
     const badge = document.getElementById("ml-fab-badge");
     panel.classList.add("ml-open");
     if (badge) badge.style.display = "none";
+    // No mobile, previne scroll do body e mantém input visível
+    if (isMobile()) {
+      document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.width = "100%";
+    }
 
     const messages = document.getElementById("ml-messages");
     if (!messages.children.length) {
@@ -589,6 +657,10 @@
   function closePanel() {
     state.open = false;
     document.getElementById("ml-chat-panel").classList.remove("ml-open");
+    // Restaura scroll do body no mobile
+    document.body.style.overflow = "";
+    document.body.style.position = "";
+    document.body.style.width = "";
   }
 
   function showEmailGate() {
@@ -660,7 +732,12 @@
   function appendMsg(el) {
     const messages = document.getElementById("ml-messages");
     messages.appendChild(el);
-    messages.scrollTop = messages.scrollHeight;
+    // Scroll to bottom - important on mobile
+    requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+      // Extra scroll after images load
+      setTimeout(() => { messages.scrollTop = messages.scrollHeight; }, 300);
+    });
   }
 
   // ── Carrossel com imagens ───────────────────────────────────────────────────
@@ -830,8 +907,10 @@
 
       if (data.products?.length) {
         addProductCarousel(data.products);
+        maybeShowChips(message, data.products);
       } else {
         addBotMessage("Não encontrei produtos disponíveis para esse pedido agora. Tente com outras palavras?");
+        addRefinementChips(["🔄 Tentar novamente", "🎨 Mudar a ocasião", "🌊 Ver looks de praia", "💃 Ver looks de festa"]);
       }
     } catch (err) {
       removeTyping();
