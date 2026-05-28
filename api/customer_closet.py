@@ -158,12 +158,16 @@ async def stylist_chat(payload: StylistChatRequest):
 
             colors, sizes, cats, occasions_bought = Counter(), Counter(), Counter(), Counter()
             closet_tops = []
+            _SKIP_CATS = {"sale casa","casa","kit","infantil","kids","bebê","bebe"}
 
-            # Processa closet
+            # Processa closet — ignora casa/infantil/kit
             for color, size, print_n, coll, name, cat, ptype in closet_rows:
+                cat_lower = (cat or "").lower()
+                if any(skip in cat_lower for skip in _SKIP_CATS): continue
+                if (ptype or "").upper() == "CASA": continue
                 if color: colors[color.lower()] += 1
                 if size:  sizes[size.upper()] += 1
-                if cat:   cats[cat.lower()] += 1
+                if cat:   cats[cat_lower] += 1
                 if name:
                     n, pt = name.lower(), (ptype or "").upper()
                     if pt in ("BIQUINI SUTIA","SUTIA") or any(
@@ -171,14 +175,37 @@ async def stylist_chat(payload: StylistChatRequest):
                     ):
                         closet_tops.append({"name": name, "collection": coll or ""})
 
-            # Processa pedidos reais
+            # Processa pedidos reais — ignora casa/infantil
             for color, size, ptype, occ, name, cat in order_rows:
+                cat_lower = (cat or "").lower()
+                if any(skip in cat_lower for skip in _SKIP_CATS): continue
                 if color: colors[color.lower()] += 1
                 if size:  sizes[size.upper()] += 1
                 if occ:   occasions_bought[occ.upper()] += 1
-                if cat:   cats[cat.lower()] += 1
+                if cat:   cats[cat_lower] += 1
+
+            # Detecta gênero dominante pelo closet
+            client_gender = ""
+            try:
+                _gq = (
+                    "SELECT UPPER(cp.gender), COUNT(*) as cnt "
+                    "FROM customer_closet_items cci "
+                    "INNER JOIN catalog_products cp ON cp.sku_id = cci.sku_id "
+                    "WHERE cci.email = :e "
+                    "  AND cp.gender IS NOT NULL "
+                    "  AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%infantil%' "
+                    "  AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%casa%' "
+                    "GROUP BY cp.gender ORDER BY cnt DESC LIMIT 1"
+                )
+                rg = await db.execute(_txt(_gq), {"e": email})
+                grow = rg.fetchone()
+                if grow and grow[0]:
+                    client_gender = grow[0].strip()
+            except Exception:
+                pass
 
             parts = []
+            if client_gender: parts.append(f"Gênero do cliente: {client_gender}")
             if colors:   parts.append(f"Cores favoritas: {', '.join(c for c,_ in colors.most_common(4))}")
             if sizes:    parts.append(f"Tamanhos: {', '.join(s for s,_ in sizes.most_common(2))}")
             if cats:     parts.append(f"Categorias frequentes: {', '.join(c for c,_ in cats.most_common(3))}")
@@ -188,9 +215,8 @@ async def stylist_chat(payload: StylistChatRequest):
             if closet_tops:
                 parts.append(f"Sutiãs/tops no closet (sugerir calcinha do mesmo mix): "
                              + ", ".join(t["name"] for t in closet_tops[:2]))
-            if order_rows and not closet_rows:
-                parts.append(f"Histórico: {len(order_rows)} compras anteriores registradas")
             profile_text = "\n".join(parts)
+
 
             # Memória IA acumulada (conversas anteriores)
             mr = await db.execute(_txt(
@@ -253,14 +279,19 @@ async def stylist_chat(payload: StylistChatRequest):
         from sqlalchemy import text as _txt2
 
         async with AsyncSessionLocal() as db:
-            # Base: sempre exclui infantil, casa e gênero errado
-            # Detecta gênero do cliente pelo closet ou email para filtrar
+            # Base: exclui infantil/casa e aplica filtro de gênero pelo perfil do cliente
+            _msg_has_masc = any(t in _msg_pre for t in ["masculino","marido","namorado","pai","irmão","homem"])
+            _msg_has_fem  = any(t in _msg_pre for t in ["feminino","mulher","minha"])
             _gender_clause = ""
-            if profile_text:
-                # Feminino é o default para Água de Coco — filtra masculino salvo se pediu
-                _msg_has_masc = any(t in _msg_pre for t in ["masculino","marido","namorado","pai","irmão"])
-                if not _msg_has_masc:
-                    _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
+            if client_gender == "MASCULINO" and not _msg_has_fem:
+                # Cliente masculino: exclui feminino (mas mantém unissex)
+                _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('FEMININO')"
+            elif client_gender == "FEMININO" and not _msg_has_masc:
+                # Cliente feminino: exclui masculino
+                _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
+            elif not client_gender and not _msg_has_masc:
+                # Sem perfil e sem pedido explícito de masculino: default feminino (marca)
+                _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
 
             _base_where = f"""
                 cp.is_active = 1
