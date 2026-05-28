@@ -1132,7 +1132,7 @@ async def get_conversion_stats():
                   COUNT(DISTINCT o.order_id) as orders_after_chat
                 FROM recommendation_clicks rc
                 LEFT JOIN orders o ON (
-                  o.email = rc.email
+                  (o.email = rc.email OR o.email LIKE rc.email || '-%')
                   AND o.creation_date >= rc.clicked_at
                   AND o.creation_date <= rc.clicked_at + INTERVAL '72 hours'
                   AND o.status NOT IN ('canceled', 'canceling')
@@ -1157,7 +1157,7 @@ async def get_conversion_stats():
                   COALESCE(SUM(o.total_value), 0) as total_gasto
                 FROM recommendation_clicks rc
                 LEFT JOIN orders o ON (
-                  o.email = rc.email
+                  (o.email = rc.email OR o.email LIKE rc.email || '-%')
                   AND o.status NOT IN ('canceled', 'canceling')
                 )
                 WHERE rc.source = 'widget_stylist_chat'
