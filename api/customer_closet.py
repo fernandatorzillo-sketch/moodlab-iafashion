@@ -169,7 +169,7 @@ async def stylist_chat(payload: StylistChatRequest):
     # Detecta contexto ANTES da query para carregar só o necessário
     # (evita pegar 120 produtos genéricos e filtrar depois)
     _msg_pre = (message + " " + " ".join(
-        h.content for h in (payload.history or [])[-4:] if h.role == "user"
+        h.content for h in (payload.history or [])[-8:] if h.role == "user"
     )).lower()
     _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono"])
     _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"])
@@ -193,6 +193,7 @@ async def stylist_chat(payload: StylistChatRequest):
                      "BODY","CROPPED","CALCA","SAIA","SHORT","BERMUDA") + _COMPLEMENTS
 
     # Monta filtro de product_type para a query
+    # SALE não zera o contexto — se estava pedindo jantar + sale, filtra vestidos em sale
     if _is_beach_pre and not _is_party_pre:
         _type_filter = _BEACH_TYPES
     elif _is_party_pre and not _is_beach_pre:
@@ -202,11 +203,7 @@ async def stylist_chat(payload: StylistChatRequest):
     elif _is_casual_pre:
         _type_filter = _CASUAL_TYPES
     else:
-        _type_filter = None  # sem filtro de tipo — contexto ambíguo
-
-    # Filtro de departamento: inclui TODOS (feminino + sale + masculino)
-    # Varia conforme comportamento de compra do cliente (sem exclusão hard)
-    _dept_clause = ""  # sem restrição — mostra tudo que tem estoque
+        _type_filter = None  # contexto ambíguo — sem filtro de tipo
 
     catalog_products: list[dict] = []
     try:
@@ -214,17 +211,19 @@ async def stylist_chat(payload: StylistChatRequest):
         from sqlalchemy import text as _txt2
 
         async with AsyncSessionLocal() as db:
-            # Query base — inclui list_price para produtos em promoção
+            # Base: sempre exclui infantil e casa (nunca relevante para o shopper)
             _base_where = """
                 cp.is_active = 1
                 AND cp.image_url IS NOT NULL AND cp.image_url != ''
                 AND cp.product_url IS NOT NULL AND cp.product_url != ''
                 AND cp.price > 0
                 AND inv.is_available = 1 AND inv.quantity > 0
+                AND LOWER(COALESCE(cp.department,'')) NOT IN ('infantil','casa','kit','kids','bebe','bebê')
+                AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%infantil%'
+                AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%kids%'
+                AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%casa%'
             """
 
-            # Se tem contexto definido: busca por tipo + complementos (< 80 produtos)
-            # Se contexto ambíguo: busca ampla com RANDOM() para variedade
             if _type_filter:
                 _placeholders = ", ".join(f":t{i}" for i in range(len(_type_filter)))
                 _params = {f"t{i}": v for i, v in enumerate(_type_filter)}
@@ -237,10 +236,13 @@ async def stylist_chat(payload: StylistChatRequest):
                 _order = "ORDER BY RANDOM()"
                 _limit = "LIMIT 100"
 
-            # Promoção: inclui também produtos sem estoque no SALE (se pediu sale)
+            # SALE: adiciona filtro de desconto MAS mantém o filtro de tipo/contexto
+            # Nunca zera _type_clause — se pediu vestido em sale, busca vestido em sale
             if _is_sale_pre:
-                _base_where += " AND (cp.list_price IS NOT NULL OR LOWER(cp.department) LIKE 'sale%')"
-                _type_clause = ""  # sem filtro de tipo em SALE — mostra tudo disponível
+                _base_where += " AND (cp.list_price IS NOT NULL AND cp.list_price > cp.price OR LOWER(COALESCE(cp.department,'')) LIKE 'sale%')"
+                # Só remove filtro de tipo se não há contexto de ocasião
+                if not _type_filter:
+                    _type_clause = ""
                 _order = "ORDER BY RANDOM()"
                 _limit = "LIMIT 80"
 
@@ -414,12 +416,24 @@ async def stylist_chat(payload: StylistChatRequest):
                 if not tipo:
                     tipo = "OUTRO"
 
-                # ── Detecta se é peça de frio pelo cadastro — SEM heurística de nome ──
-                # product_type já trata TRICO/TRICÔ/JAQUETA etc.
-                # Única exceção: Linha VIDA (roupa casual, não praia) não é frio mas também
-                # não deve aparecer em contexto de praia — marcamos como ROUPA
+                # ── Correção por ocasião VTEX — tem prioridade sobre product_type ──
+                # Ex: product_type=VESTIDO + ocasiao=SAIDA DE PRAIA → tipo deve ser SAIDA
+                # A ocasião cadastrada na VTEX é mais específica que o tipo genérico
+                _OC_OVERRIDE = {
+                    "SAIDA DE PRAIA":    "SAIDA",
+                    "SAIDA DE BANHO":    "SAIDA",
+                    "CAPA/CAPA KIMONO":  "SAIDA",
+                    "CANGA":             "SAIDA",
+                    "TUNICA":            "SAIDA",
+                    "BIQUINI SUTIA":     "PRAIA_TOP",
+                    "BIQUINI CALCINHA":  "PRAIA_BOTTOM",
+                    "MAIO":              "MAIO",
+                    "SUNGA":             "SUNGA",
+                }
+                if oc in _OC_OVERRIDE:
+                    tipo = _OC_OVERRIDE[oc]
+
                 # Linha: detecta pelo campo collection se vier AGUA/VIDA/LUZ
-                # (sem migration — usa o que já existe no banco)
                 coll_upper = (coll or "").strip().upper()
                 linha = coll_upper if coll_upper in ("AGUA","VIDA","LUZ","UNDERWEAR") else ""
 
@@ -481,7 +495,7 @@ async def stylist_chat(payload: StylistChatRequest):
     # ── 4. Detecta contexto — mensagem atual + histórico do usuário ──────────
     msg_lower = message.lower()
     hist_user = " ".join(
-        h.content.lower() for h in (payload.history or [])[-6:] if h.role == "user"
+        h.content.lower() for h in (payload.history or [])[-8:] if h.role == "user"
     )
     ctx = msg_lower + " " + hist_user  # contexto acumulado para detectar ocasião
 
@@ -606,10 +620,11 @@ async def stylist_chat(payload: StylistChatRequest):
     ) if requested_mix else ""
     sale_hint = (
         "PROMOÇÃO SOLICITADA: use APENAS produtos com campo DE: preenchido ou do departamento SALE. "
-        "Para cada produto: cite o preço original e o por quanto está. "
-        "Ex: 'De R$799 por R$399 — 50% off'. "
-        "Mesmo em promoção, monte um LOOK COERENTE — peças que combinam entre si por cor e estilo. "
-        "Não sugira peças aleatórias só por estarem em promoção."
+        "Para cada produto com desconto: mencione De R$X por R$Y. "
+        "MANTENHA O CONTEXTO DA CONVERSA: se falávamos de festa, mostre vestidos em promoção. "
+        "Se falávamos de praia, mostre biquínis/saídas em promoção. "
+        "NUNCA misture adulto feminino com infantil ou masculino no mesmo look. "
+        "Monte um look coerente mesmo dentro das peças em promoção."
     ) if is_sale else ""
 
     # ── 9. System prompt — baseado em regras de negócio reais ───────────────
