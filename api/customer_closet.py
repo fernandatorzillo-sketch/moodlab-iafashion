@@ -156,6 +156,21 @@ async def stylist_chat(payload: StylistChatRequest):
     except Exception:
         pass  # Sem perfil — IA funciona mesmo assim
 
+    # ── Carrega memória prévia do cliente ────────────────────────────────
+    memory_text = ""
+    try:
+        from services.closet_db import AsyncSessionLocal as _ASL_mem
+        from sqlalchemy import text as _mtxt
+        async with _ASL_mem() as _mdb:
+            _mr = await _mdb.execute(_mtxt(
+                "SELECT resumo_ia FROM client_memory WHERE email=:e LIMIT 1"
+            ), {"e": email})
+            _mrow = _mr.fetchone()
+            if _mrow and _mrow[0]:
+                memory_text = f"Memória prévia: {_mrow[0]}"
+    except Exception:
+        pass
+
     # ── 2. Catálogo (query simples, sem JOIN pesado) ───────────────────────
     catalog_products = []
     try:
@@ -679,8 +694,8 @@ RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
                   ultima_conversa = NOW()
             """), {
                 "email": email,
-                "cores": ", ".join(profile.get("colors", [])),
-                "tamanhos": ", ".join(profile.get("sizes", [])),
+                "cores": "",
+                "tamanhos": "",
                 "ocasioes": message[:80] if is_party else ("praia" if is_beach else ""),
                 "pedidos": message[:80],
                 "categorias": ", ".join(profile.get("categories", [])),
@@ -1013,19 +1028,4 @@ async def debug_customer_closet(email: str):
     if not email:
         raise HTTPException(status_code=400, detail="E-mail é obrigatório")
 
-    return await get_customer_closet_payload(email)    # ── Carrega memória prévia do cliente ─────────────────────────────────
-    memory_text = ""
-    try:
-        from services.closet_db import AsyncSessionLocal
-        from sqlalchemy import text as _mtxt
-        async with AsyncSessionLocal() as _mdb:
-            _mr = await _mdb.execute(_mtxt(
-                "SELECT resumo_ia, preferencias_confirmadas FROM client_memory WHERE email=:e LIMIT 1"
-            ), {"e": email})
-            _mrow = _mr.fetchone()
-            if _mrow and _mrow[0]:
-                memory_text = f"Memória prévia: {_mrow[0]}"
-    except Exception:
-        pass
-
-
+    return await get_customer_closet_payload(email)
