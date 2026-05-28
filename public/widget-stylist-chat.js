@@ -781,11 +781,18 @@
       if (p.image_url && p.image_url.startsWith("http")) {
         const img = document.createElement("img");
         img.className = "ml-card-img";
-        // URL já chega limpa do backend (sem ?v=)
-        // Garante prefixo https para URLs relativas
-        const imgUrl = !p.image_url ? "" :
+        // Sempre roteia imagens VTEX pelo proxy para evitar bloqueio CORS
+        const rawImgUrl = !p.image_url ? "" :
           p.image_url.startsWith("http") ? p.image_url :
           "https://lojaaguadecoco.vteximg.com.br" + p.image_url;
+        const isVtexImg = rawImgUrl && (
+          rawImgUrl.includes("vteximg.com") ||
+          rawImgUrl.includes("vtexassets.com") ||
+          rawImgUrl.includes("aguadecoco")
+        );
+        const imgUrl = isVtexImg
+          ? `${API_BASE}/api/v1/image-proxy?url=${encodeURIComponent(rawImgUrl)}`
+          : rawImgUrl;
         img.src = imgUrl;
         img.alt = p.name || "";
         img.loading = "lazy";
@@ -899,6 +906,12 @@
     addTyping();
 
     try {
+      // Monta histórico leve para a IA (últimas 6 trocas, sem produtos)
+      const historyForApi = state.messages
+        .filter(m => m.type === "bot" || m.type === "user")
+        .slice(-6)
+        .map(m => ({ role: m.type === "user" ? "user" : "assistant", content: m.text || "" }));
+
       const res = await fetch(`${API_BASE}/api/v1/customer-closet/stylist-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -907,6 +920,7 @@
           message,
           page_context: getPageContext(),
           limit: 6,
+          history: historyForApi,
         }),
       });
 
