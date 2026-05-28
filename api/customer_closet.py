@@ -196,10 +196,10 @@ async def stylist_chat(payload: StylistChatRequest):
                 if not name or not img or not url:
                     continue
                 # Limpa imagem
-                img_raw = img.split('?')[0].strip() if img else ''
-                if _re.search(r'-\d+-\d+/', img_raw):
-                    img_clean = _re.sub(r'-\d+-\d+(/)', r'-500-500\1', img_raw)
-                elif img_raw.startswith('/'):
+                # Remove apenas query string (?v=...) — NÃO alterar dimensões
+                # O regex anterior corrompía o product_id na URL (bug crítico)
+                img_raw = (img or "").strip().split('?')[0]
+                if img_raw.startswith('/'):
                     img_clean = 'https://lojaaguadecoco.vteximg.com.br' + img_raw
                 else:
                     img_clean = img_raw

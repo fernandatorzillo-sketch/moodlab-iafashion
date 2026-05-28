@@ -781,12 +781,11 @@
       if (p.image_url && p.image_url.startsWith("http")) {
         const img = document.createElement("img");
         img.className = "ml-card-img";
-        // Garante URL absoluta
-        const imgUrl = (p.image_url || "").startsWith("http")
-          ? p.image_url
-          : p.image_url
-            ? "https://lojaaguadecoco.vteximg.com.br" + p.image_url
-            : "";
+        // URL já chega limpa do backend (sem ?v=)
+        // Garante prefixo https para URLs relativas
+        const imgUrl = !p.image_url ? "" :
+          p.image_url.startsWith("http") ? p.image_url :
+          "https://lojaaguadecoco.vteximg.com.br" + p.image_url;
         img.src = imgUrl;
         img.alt = p.name || "";
         img.loading = "lazy";
