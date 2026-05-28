@@ -54,7 +54,16 @@ async def run_sync():
     except Exception as e:
         log.error(f"✗ Erro no sync de estoque: {e}")
 
-    # 3. Marca produtos sem estoque como inativos
+    # 3. Sync incremental de pedidos VTEX (para dashboard de conversão)
+    try:
+        log.info("3/4 Sincronizando pedidos VTEX...")
+        from jobs.sync_orders_incremental import run as run_orders
+        await run_orders()
+        log.info("✓ Pedidos sincronizados")
+    except Exception as e:
+        log.error(f"✗ Erro no sync de pedidos: {e}")
+
+    # 4. Marca produtos sem estoque como inativos
     try:
         log.info("3/3 Atualizando is_active por estoque...")
         async with AsyncSessionLocal() as db:
