@@ -240,7 +240,7 @@ async def stylist_chat(payload: StylistChatRequest):
     _msg_pre = (message + " " + " ".join(
         h.content for h in (payload.history or [])[-8:] if h.role == "user"
     )).lower()
-    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono"])
+    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono","barco","iate","deck","náutico"])
     _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"])
     _is_sale_pre   = any(t in _msg_pre for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato"])
     _is_cold_pre   = any(t in _msg_pre for t in ["frio","inverno","tricô","trico","casaco"])
@@ -309,6 +309,18 @@ async def stylist_chat(payload: StylistChatRequest):
             _specific_types = types
             break
 
+    # Detecta pergunta de refinamento — mensagem curta sem novo contexto
+    # Ex: "tem preto?", "tem no M?", "e em azul?", "qual o preço?"
+    _is_refinement = (
+        len(message.strip()) < 40
+        and not _specific_types
+        and not _is_beach_pre
+        and not _is_party_pre
+        and not _is_cold_pre
+        and not _is_casual_pre
+        and any(t in message.lower() for t in ["tem ","tem?","tamanho","cor ","e em","e o","qual","como","existe","disponível","disponivel","no m","no p","no g","no gg","pp/"])
+    )
+
     # Monta filtro de product_type para a query
     if _specific_types:
         # Produto específico pedido: busca esse tipo + complementos de look
@@ -321,6 +333,16 @@ async def stylist_chat(payload: StylistChatRequest):
         _type_filter = _COLD_TYPES
     elif _is_casual_pre:
         _type_filter = _CASUAL_TYPES
+    elif _is_refinement:
+        # Pergunta de refinamento — herda contexto do histórico via _msg_pre
+        _hist_beach_ref = any(t in _msg_pre for t in ["praia","barco","iate","maio","maiô","biquini","biquíni","resort","piscina","sunga"])
+        _hist_party_ref = any(t in _msg_pre for t in ["festa","jantar","evento","casamento","formatura"])
+        if _hist_beach_ref:
+            _type_filter = _BEACH_TYPES
+        elif _hist_party_ref:
+            _type_filter = _PARTY_TYPES
+        else:
+            _type_filter = None
     else:
         _type_filter = None  # contexto ambíguo — busca ampla
 
@@ -1163,10 +1185,12 @@ async def get_conversion_stats():
                   COUNT(rc.id) as total_interacoes,
                   MAX(rc.clicked_at) as ultima_interacao,
                   COUNT(DISTINCT o.order_id) as total_pedidos,
-                  COALESCE(SUM(o.total_value), 0) as total_gasto
+                  COALESCE(SUM(DISTINCT o.total_value), 0) as total_gasto
                 FROM recommendation_clicks rc
                 LEFT JOIN orders o ON (
                   (o.email = rc.email OR o.email LIKE rc.email || '-%')
+                  AND o.creation_date >= rc.clicked_at
+                  AND o.creation_date <= rc.clicked_at + INTERVAL '72 hours'
                   AND o.status NOT IN ('canceled', 'canceling')
                 )
                 WHERE rc.source = 'widget_stylist_chat'
