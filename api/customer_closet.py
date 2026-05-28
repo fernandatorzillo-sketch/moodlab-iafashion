@@ -9,6 +9,62 @@ from pydantic import BaseModel
 from services.customer_closet_service import get_customer_closet_payload
 from services.recommendation_service import get_customer_recommendations
 
+
+# ── Tabela de match de cores 2026 ─────────────────────────────────────────
+# Usada tanto no filtro de catálogo quanto no system_prompt
+COLOR_MATCH_2026 = {
+    # Verde
+    "verde oliva":   ["bege","areia","off white","marrom","chocolate","azul petróleo","vinho"],
+    "verde bandeira":["rosa","branco","cinza","azul marinho","caramelo"],
+    "verde sálvia":  ["lavanda","creme","cinza","azul bebê","prata"],
+    "verde":         ["bege","off white","branco","caramelo","areia"],
+    # Azul
+    "azul marinho":  ["branco","bege","vermelho","mostarda","verde oliva"],
+    "azul bebê":     ["marrom","chocolate","mocha","cinza","rosa","branco","prata"],
+    "azul petróleo": ["ferrugem","nude","preto","verde","dourado"],
+    "azul":          ["branco","bege","caramelo","off white","areia"],
+    # Rosa
+    "rosa blush":    ["marrom","chocolate","cinza","branco","verde oliva","azul"],
+    "rosa":          ["vermelho","preto","off white","roxo","marrom"],
+    # Marrom
+    "marrom":        ["azul bebê","rosa","verde sálvia","creme","off white","bege"],
+    "chocolate":     ["azul bebê","rosa","verde","creme","vinho"],
+    "caramelo":      ["branco","azul marinho","verde","preto","dourado"],
+    "mocha":         ["off white","bege","caramelo","verde","rosa blush"],
+    # Vermelho/Vinho
+    "vermelho":      ["rosa","azul","cinza","preto","bege"],
+    "vinho":         ["verde oliva","creme","azul petróleo","marrom","rosé"],
+    # Roxo
+    "lavanda":       ["cinza","verde menta","branco","azul bebê","prata"],
+    "roxo":          ["bege","preto","rosa","verde","dourado"],
+    # Neutros (combinam com tudo)
+    "preto":         ["branco","off white","bege","dourado","vermelho","caramelo"],
+    "branco":        ["qualquer"],
+    "off white":     ["qualquer"],
+    "bege":          ["qualquer"],
+    "areia":         ["qualquer"],
+    "creme":         ["qualquer"],
+    "cinza":         ["azul","rosa","vermelho","branco","preto"],
+    "dourado":       ["preto","marrom","azul petróleo","vinho","caramelo"],
+    "prata":         ["azul bebê","lavanda","cinza","preto","branco"],
+}
+
+# Cores neutras 2026 — combinam com qualquer outra
+NEUTROS_2026 = {"branco","off white","bege","areia","creme","mocha","cinza névoa","preto suave","preto"}
+
+def _color_matches(cor1: str, cor2: str) -> bool:
+    """Verifica se duas cores combinam pela tabela 2026."""
+    c1 = cor1.lower().strip()
+    c2 = cor2.lower().strip()
+    if not c1 or not c2: return True  # sem cor = não filtra
+    if c1 in NEUTROS_2026 or c2 in NEUTROS_2026: return True
+    # Busca match parcial nas chaves
+    for key, combos in COLOR_MATCH_2026.items():
+        if key in c1:
+            if "qualquer" in combos: return True
+            return any(m in c2 for m in combos)
+    return True  # sem regra definida = permite
+
 router = APIRouter(prefix="/api/v1/customer-closet", tags=["customer-closet"])
 
 
@@ -107,9 +163,9 @@ async def stylist_chat(payload: StylistChatRequest):
 
         async with AsyncSessionLocal() as db:
             r3 = await db.execute(_txt2("""
-                SELECT cp.product_id, cp.name, cp.price,
-                       cp.category, cp.image_url, cp.product_url,
-                       cp.color, cp.collection
+                SELECT cp.product_id, cp.name, cp.price, cp.list_price,
+                       cp.category, cp.product_type, cp.image_url, cp.product_url,
+                       cp.color, cp.collection, cp.occasion, cp.print_name, cp.gender
                 FROM catalog_products cp
                 INNER JOIN inventory_by_sku inv ON inv.sku_id = cp.sku_id
                 WHERE cp.is_active = 1
@@ -120,7 +176,7 @@ async def stylist_chat(payload: StylistChatRequest):
                 ORDER BY cp.updated_at DESC
                 LIMIT 80
             """))
-            for pid, name, price, cat, img, url, color, coll in r3.fetchall():
+            for pid, name, price, list_p, cat, ptype, img, url, color, coll, occ, print_n, gender in r3.fetchall():
                 if not name or not img or not url:
                     continue
                 # Limpa imagem
@@ -134,15 +190,27 @@ async def stylist_chat(payload: StylistChatRequest):
                 # URL com /p
                 url_clean = url if url.startswith("http") else f"https://www.aguadecoco.com.br{url}"
 
+                # Preço DE (list_price) formatado
+                try:
+                    lp_cents = round(float(list_p) * 100) if list_p and float(list_p) > float(price or 0) else 0
+                    list_price_fmt = (f"R$ {lp_cents//100:,}".replace(",",".") + f",{lp_cents%100:02d}") if lp_cents else ""
+                except Exception:
+                    list_price_fmt = ""
+
                 catalog_products.append({
                     "product_id": str(pid),
                     "name": name,
                     "price": price_fmt,
+                    "list_price": list_price_fmt,
                     "category": cat or "",
+                    "product_type": (ptype or "").strip().upper(),
                     "image_url": img_clean,
                     "url": url_clean,
                     "color": color or "",
                     "collection": coll or "",
+                    "occasion_vtex": (occ or "").strip().upper(),
+                    "print_name": (print_n or "").strip(),
+                    "gender": (gender or "").strip().upper(),
                 })
     except Exception:
         pass
@@ -161,31 +229,162 @@ async def stylist_chat(payload: StylistChatRequest):
     if "Tamanhos:" in profile_text:
         size_hint = profile_text.split("Tamanhos:")[1].split("\n")[0].strip().split(",")[0].strip()
 
-    # Classifica produtos por tipo para o prompt
-    def _classify(name, cat):
-        n = (name + " " + (cat or "")).lower()
-        # Maiô é peça inteira — categoria própria
-        if any(t in n for t in ["maiô","maio ","maio-","maio "]):
-            return "MAIO"
-        # Sutiã/top de biquíni = parte de cima
-        if any(t in n for t in ["sutiã","sutia","biquíni sutiã","biquini sutia","top praia","faixa praia","bandeau","frente única"]):
+    # Classifica produtos usando o campo occasion do VTEX (fonte oficial)
+    def _classify(name, cat, occasion_vtex="", product_type=""):
+        """
+        Classificação usando 3 camadas em ordem de prioridade:
+        1. product_type (Tipo de Produto VTEX) — mais específico
+        2. occasion (Ocasião VTEX) — fonte oficial
+        3. category (categoria de navegação) + nome — fallback
+        """
+        occ  = (occasion_vtex or "").upper().strip()
+        ptype = (product_type or "").upper().strip()
+        n    = (name + " " + (cat or "")).lower()
+
+        # ── CAMADA 1: product_type (mais preciso) ──────────────────────
+        _PT_MAP = {
+            "BIQUINI SUTIA":      "PRAIA_TOP",
+            "SUTIA":              "PRAIA_TOP",
+            "BIQUINI CALCINHA":   "PRAIA_BOTTOM",
+            "CALCINHA":           "PRAIA_BOTTOM",
+            "MAIO":               "MAIO",
+            "SUNGA":              "SUNGA",
+            "VESTIDO":            "VESTIDO",
+            "MACACÃO":            "VESTIDO",
+            "MACACAO":            "VESTIDO",
+            "CHEMISE":            "VESTIDO",
+            "CALCA":              "BOTTOM",
+            "SAIA":               "BOTTOM",
+            "SHORT":              "BOTTOM",
+            "BERMUDA":            "BOTTOM",
+            "BOARDSHORT":         "BOTTOM",
+            "BLUSA/TOP":          "TOP",
+            "BLUSA":              "TOP",
+            "TOP":                "TOP",
+            "CAMISETA":           "TOP",
+            "CAMISA":             "TOP",
+            "BODY":               "TOP",
+            "CROPPED":            "TOP",
+            "SAIDA DE PRAIA":     "SAIDA",
+            "SAIDA DE BANHO":     "SAIDA",
+            "CAPA/CAPA KIMONO":   "SAIDA",
+            "CAPA":               "SAIDA",
+            "CANGA":              "SAIDA",
+            "TUNICA":             "SAIDA",
+            "PAREO":              "SAIDA",
+            "SANDALIA":           "CALCADO",
+            "SANDÁLIAS":          "CALCADO",
+            "CALCADO":            "CALCADO",
+            "CALÇADOS":           "CALCADO",
+            "CHINELO":            "CALCADO",
+            "RASTEIRA":           "CALCADO",
+            "BOLSA":              "BOLSA",
+            "NECESSAIRE":         "BOLSA",
+            "BRINCO":             "ACESSORIO",
+            "COLAR":              "ACESSORIO",
+            "PULSEIRA":           "ACESSORIO",
+            "ANEL":               "ACESSORIO",
+            "CHAPEU/BONE/VISEIRA":"ACESSORIO",
+            "CHAPÉU":             "ACESSORIO",
+            "OCULOS":             "ACESSORIO",
+            "ÓCULOS":             "ACESSORIO",
+            "CINTO":              "ACESSORIO",
+            "LENCO":              "ACESSORIO",
+            "JAQUETA/BLAZER/PARKA": "FRIO",
+            "JAQUETA":            "FRIO",
+            "BLAZER":             "FRIO",
+            "MOLETOM":            "FRIO",
+        }
+        if ptype in _PT_MAP:
+            return _PT_MAP[ptype]
+
+        # ── CAMADA 2: occasion VTEX ────────────────────────────────────
+        _OCC_MAP = {
+            "BIQUINI SUTIA":      "PRAIA_TOP",
+            "BIQUINI CALCINHA":   "PRAIA_BOTTOM",
+            "MAIO":               "MAIO",
+            "SUNGA":              "SUNGA",
+            "SAIDA DE PRAIA":     "SAIDA",
+            "SAIDA DE BANHO":     "SAIDA",
+            "CAPA/CAPA KIMONO":   "SAIDA",
+            "CANGA":              "SAIDA",
+            "TUNICA":             "SAIDA",
+            "VESTIDO":            "VESTIDO",
+            "CALCA":              "BOTTOM",
+            "SHORT":              "BOTTOM",
+            "BERMUDA":            "BOTTOM",
+            "SAIA":               "BOTTOM",
+            "BOARDSHORT":         "BOTTOM",
+            "BLUSA/TOP":          "TOP",
+            "CAMISETA":           "TOP",
+            "CAMISA":             "TOP",
+            "BODY":               "TOP",
+            "ACESSORIOS":         "ACESSORIO",
+            "JAQUETA/BLAZER/PARKA": "FRIO",
+        }
+        if occ in _OCC_MAP:
+            return _OCC_MAP[occ]
+
+        # PRAIA genérico — usa category e nome para desambiguar
+        if occ == "PRAIA":
+            cat_u = (cat or "").upper()
+            if "SUTIA" in cat_u or "BIQUÍNI" in cat_u or "BIKINI" in cat_u:
+                return "PRAIA_TOP" if "SUTIA" in cat_u else "PRAIA_BOTTOM"
+            if "CALCINHA" in cat_u:  return "PRAIA_BOTTOM"
+            if "MAIÔ" in cat_u or "MAIO" in cat_u: return "MAIO"
+            if "SUNGA" in cat_u:     return "SUNGA"
+            if "SAÍDA" in cat_u or "SAIDA" in cat_u or "CANGA" in cat_u: return "SAIDA"
+            # Fallback pelo nome
+            if any(t in n for t in ["sutiã","sutia","bandeau","cortininha","frente única"]):
+                return "PRAIA_TOP"
+            if any(t in n for t in ["calcinha"]):
+                return "PRAIA_BOTTOM"
             return "PRAIA_TOP"
-        # Calcinha de biquíni = parte de baixo
-        if any(t in n for t in ["biquíni calcinha","biquini calcinha","calcinha ","calcinha lacinho","calcinha lateral","calcinha fio"]):
-            return "PRAIA_BOTTOM"
-        # Biquíni genérico — verifica se é top ou bottom pelo nome
-        if any(t in n for t in ["biquíni","biquini","biquine"]):
-            return "PRAIA_TOP" if any(t in n for t in ["sutiã","sutia","top","faixa","bandeau","frente","cortininha","cortinha"]) else "PRAIA_BOTTOM"
-        if any(t in n for t in ["saída","saida","canga","pareo","pareô","kimono","capa ","capa	","túnica","tunica","kaftan","parêo"]): return "SAIDA"
-        if any(t in n for t in ["vestido","macacão","macacao"]): return "VESTIDO"
-        if any(t in n for t in ["calça","calca","short","bermuda","saia"]): return "BOTTOM"
-        if any(t in n for t in ["blusa","camisa","camiseta","top ","cropped","body"]): return "TOP"
-        if any(t in n for t in ["sandália","sandalia","rasteira","scarpin","chinelo","sapato","tamanco"]): return "CALCADO"
-        if any(t in n for t in ["bolsa","clutch","tote","bag","carteira"]): return "BOLSA"
-        if any(t in n for t in ["chapéu","chapeu","bone","boné","óculos","oculos","colar","brinco","pulseira","anel"]): return "ACESSORIO"
-        if any(t in n for t in ["suéter","sueter","tricô","trico","moletom","casaco","jaqueta","cardigan"]): return "FRIO"
-        if any(t in n for t in ["sunga","short praia masculino","boxer praia"]): return "SUNGA"
-        if any(t in n for t in ["camisa masculina","polo masculino","regata masculina","camiseta masculina"]): return "TOP_MASC"
+
+        # ── CAMADA 3: category de navegação ───────────────────────────
+        cat_u = (cat or "").upper()
+        _CAT_MAP = {
+            "BIQUÍNIS":                   "PRAIA_TOP",
+            "SUTIA":                      "PRAIA_TOP",
+            "CALCINHA":                   "PRAIA_BOTTOM",
+            "MAIÔS & BODIES":             "MAIO",
+            "SUNGAS":                     "SUNGA",
+            "SUNGAS INFANTIS":            "SUNGA",
+            "SAÍDAS DE PRAIA E CANGAS":   "SAIDA",
+            "VESTIDOS":                   "VESTIDO",
+            "MACACÕES FEMININOS":         "VESTIDO",
+            "SAIAS":                      "BOTTOM",
+            "CALÇAS FEMININAS":           "BOTTOM",
+            "SHORTS FEMININOS":           "BOTTOM",
+            "SHORTS & BERMUDAS MASCULINAS": "BOTTOM",
+            "SHORTS & BERMUDAS INFANTIS": "BOTTOM",
+            "BLUSAS FEMININAS":           "TOP",
+            "BLUSAS INFANTIS":            "TOP",
+            "TOP":                        "TOP",
+            "CAMISAS MASCULINAS":         "TOP",
+            "CAMISETAS MASCULINAS":       "TOP",
+            "CALÇADOS":                   "CALCADO",
+            "CALÇADOS/ ACESSÓRIOS":       "CALCADO",
+            "BOLSAS & NECESSAIRES":       "BOLSA",
+            "BRINCOS, PULSEIRAS & COLARES": "ACESSORIO",
+            "CHAPÉUS, VISEIRAS E BONÉS":  "ACESSORIO",
+            "ÓCULOS DE SOL":              "ACESSORIO",
+            "CINTOS":                     "ACESSORIO",
+            "LENÇOS":                     "ACESSORIO",
+        }
+        for key, tipo in _CAT_MAP.items():
+            if key in cat_u:
+                return tipo
+
+        # Fallback por nome
+        if any(t in n for t in ["sandália","sandalia","rasteira","scarpin","chinelo"]):
+            return "CALCADO"
+        if any(t in n for t in ["bolsa","clutch","tote"]):
+            return "BOLSA"
+        if any(t in n for t in ["suéter","sueter","tricô","trico","moletom","casaco"]):
+            return "FRIO"
+        if occ == "ROUPA":
+            return "TOP"
         return "OUTRO"
 
     # Detecta contexto da mensagem para filtrar produtos incoerentes
@@ -198,7 +397,7 @@ async def stylist_chat(payload: StylistChatRequest):
     # Filtra produtos incoerentes com o contexto
     filtered_catalog = []
     for p in catalog_products:
-        tipo = _classify(p["name"], p["category"])
+        tipo = _classify(p["name"], p["category"], p.get("occasion_vtex",""), p.get("product_type",""))
         # Detecta se pediu especificamente maiô
         is_maio = any(t in msg_lower for t in ["maiô","maio","body"])
 
@@ -223,15 +422,53 @@ async def stylist_chat(payload: StylistChatRequest):
         p["_tipo"] = tipo
         filtered_catalog.append(p)
 
-    # Garante variedade: prioriza ter parte de baixo quando há parte de cima
-    from collections import defaultdict
+    # Monta catálogo balanceado: tops + bottoms + complementos
+    balanced = []
+    priority_order = ["MAIO","SUNGA","PRAIA_TOP","PRAIA_BOTTOM","SAIDA","VESTIDO","TOP","TOP_MASC","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO"]
+    # Detecta cor pedida na mensagem para boosting
+    _color_keywords = {
+        "branco": "branco", "white": "branco",
+        "preto": "preto", "black": "preto",
+        "azul": "azul", "blue": "azul",
+        "azul bebê": "azul bebê", "baby blue": "azul bebê",
+        "verde": "verde", "green": "verde",
+        "rosa": "rosa", "pink": "rosa",
+        "marrom": "marrom", "brown": "marrom",
+        "bege": "bege", "beige": "bege",
+        "off white": "off white",
+        "caramelo": "caramelo",
+        "vinho": "vinho",
+        "vermelho": "vermelho", "red": "vermelho",
+        "roxo": "roxo", "lilas": "lavanda",
+        "dourado": "dourado", "gold": "dourado",
+        "prata": "prata", "silver": "prata",
+    }
+    requested_color = ""
+    for kw, cor in _color_keywords.items():
+        if kw in msg_lower:
+            requested_color = cor
+            break
+
+    # Se pediu cor específica, boost produtos que combinam
+    if requested_color:
+        def _color_boost(p):
+            p_color = (p.get("color") or "").lower()
+            if not p_color: return 0
+            if requested_color in p_color: return 3      # cor exata
+            if _color_matches(requested_color, p_color): return 1  # combina
+            return -1  # não combina (penaliza mas não remove)
+
+        filtered_catalog.sort(key=_color_boost, reverse=True)
+        # Remove produtos que não combinam (score -1) se há suficientes que combinam
+        good = [p for p in filtered_catalog if _color_boost(p) >= 0]
+        if len(good) >= 10:
+            filtered_catalog = good
+
+    # Reconstrói by_type após boost
     by_type = defaultdict(list)
     for p in filtered_catalog:
         by_type[p["_tipo"]].append(p)
 
-    # Monta catálogo balanceado: tops + bottoms + complementos
-    balanced = []
-    priority_order = ["MAIO","SUNGA","PRAIA_TOP","PRAIA_BOTTOM","SAIDA","VESTIDO","TOP","TOP_MASC","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO"]
     # SAIDA e complementos recebem mais slots para dar variedade
     per_type_default = max(2, 20 // max(len([t for t in priority_order if by_type[t]]), 1))
     per_type_map = {
@@ -257,8 +494,15 @@ async def stylist_chat(payload: StylistChatRequest):
             seen_ids.add(p["product_id"])
 
     catalog_lines = "\n".join(
-        f"TIPO:{p['_tipo']}|ID:{p['product_id']}|NOME:{p['name']}|COR:{p.get('color','') or ''}|COLECAO:{p.get('collection','') or ''}|PRECO:{p['price']}|CAT:{p['category']}|IMG:{p['image_url']}|URL:{p['url']}"
-        for p in balanced[:35]  # ampliado para mais variedade
+        (
+            f"TIPO:{p['_tipo']}|ID:{p['product_id']}|NOME:{p['name']}"
+            f"|COR:{p.get('color','') or ''}|ESTAMPA:{p.get('print_name','') or ''}"
+            f"|COLECAO:{p.get('collection','') or ''}|GENERO:{p.get('gender','') or ''}"
+            f"|PRECO:{p['price']}"
+            + (f"|DE:{p['list_price']}" if p.get('list_price') else "")
+            + f"|IMG:{p['image_url']}|URL:{p['url']}"
+        )
+        for p in balanced[:35]
         if p.get("image_url")
     )
 
@@ -302,14 +546,38 @@ REGRAS ABSOLUTAS DE PAREAMENTO:
 
 VARIEDADE: Quando possível, inclua 1 peça única (vestido/maiô/macacão) + 1 combinação (top+saia ou blusa+calça).
 
-COR: Se o cliente pediu uma cor específica (ex: "branco", "preto", "azul"), priorize produtos com COR: que corresponda. Se não encontrar na cor exata, ofereça a cor mais próxima e mencione na mensagem.
+COR: Se pediu cor específica, priorize COR: correspondente. Se não encontrar, ofereça cor próxima e explique.
 
-MASCULINO: Sunga = peça de praia masculina. Se o cliente pediu sunga branca e não há branca, ofereça as disponíveis e explique: "Não temos sunga branca no momento, mas separei as opções lisas disponíveis."
+MATCH DE CORES 2026 — use ao montar looks:
+· Verde oliva → bege, off white, marrom, azul petróleo, vinho
+· Verde bandeira → rosa, branco, cinza, azul marinho, caramelo
+· Verde sálvia → lavanda, creme, cinza, azul bebê, prata
+· Azul marinho → branco, bege, vermelho, mostarda, verde oliva
+· Azul bebê → marrom/chocolate, cinza, rosa blush, branco, prata (TENDÊNCIA FORTE 2026)
+· Azul petróleo → ferrugem, nude, preto, verde, dourado
+· Rosa blush → marrom, cinza, branco, verde oliva, azul
+· Marrom/Chocolate → azul bebê, rosa, verde sálvia, creme (FORTÍSSIMO 2026)
+· Caramelo → branco, azul marinho, verde, preto, dourado
+· Vermelho/Vinho → rosa, azul, cinza, preto, bege / verde oliva, creme, azul petróleo
+· Lavanda → cinza, verde menta, branco, azul bebê, prata
+· Neutros 2026 (combinam com TUDO): Off White, Bege, Areia, Mocha, Creme, Preto
 
-MENSAGEM: 2 frases calorosas. Mencione que selecionou baseado no histórico e guarda-roupa da cliente.
+TENDÊNCIAS 2026: Marrom + Azul Bebê | Vermelho + Rosa | Verde Sálvia + Areia | Bege + Branco + Marrom
+REGRA UNIVERSAL: cor forte + neutro elegante = look sempre certo.
+
+ESTAMPA: Peça ESTAMPADA → complemento DEVE ser LISO. NUNCA duas estampas diferentes.
+Se ESTAMPA: vazio = peça lisa → pode combinar com liso ou estampado na mesma cartela de cor.
+
+PAREAMENTO: Sutiã + calcinha DEVEM ter mesma COLECAO: ou mesmo ESTAMPA:. Verificar obrigatório.
+
+GÊNERO: GENERO:MASCULINO → só peças masculinas ou unissex. Não misturar.
+
+PREÇO: Se campo DE: existir no produto, usar como "list_price" no JSON (preço original com desconto).
+
+MENSAGEM: 2 frases. Mencione histórico, guarda-roupa e tendência de cor quando relevante.
 
 RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
-{{"message":"frase calorosa máx 2 linhas mencionando histórico e complemento do guarda-roupa","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","category":"CAT exato","image_url":"IMG exata","url":"URL exata"}}]}}"""
+{{"message":"frase calorosa máx 2 linhas","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","list_price":"DE: se existir, senão vazio","image_url":"IMG exata","url":"URL exata"}}]}}"""
 
     # ── 5. Chama Claude Haiku ─────────────────────────────────────────────
     try:
@@ -362,6 +630,7 @@ RETORNE APENAS este JSON (sem texto antes/depois, sem markdown):
             "id": pid,
             "name": p.get("name") or real.get("name") or "",
             "price": p.get("price") or real.get("price") or "",
+            "list_price": p.get("list_price") or real.get("list_price") or "",
             "category": p.get("category") or real.get("category") or "",
             "image_url": real.get("image_url") or (p.get("image_url") or "").split("?")[0],
             "url": real.get("url") or p.get("url") or "",

@@ -323,6 +323,10 @@
       }
       .ml-card-price-de s {
         text-decoration: line-through;
+        color: #aaa;
+      }
+      .ml-card-price-sale {
+        color: #c0392b !important;
       }
       .ml-card-complement {
         font-size: 10px;
@@ -798,10 +802,11 @@
       // Info
       const body = document.createElement("div");
       body.className = "ml-card-body";
+      const hasDiscount = p.list_price && p.list_price !== p.price && p.list_price !== "";
       const priceHtml = p.price
-        ? (p.original_price && p.original_price !== p.price
-            ? `<div class="ml-card-price-de">De: <s>${p.original_price}</s></div>
-               <div class="ml-card-price">Por: ${p.price}</div>`
+        ? (hasDiscount
+            ? `<div class="ml-card-price-de">De: <s>${p.list_price}</s></div>
+               <div class="ml-card-price ml-card-price-sale">Por: ${p.price}</div>`
             : `<div class="ml-card-price">${p.price}</div>`)
         : "";
       body.innerHTML = `
