@@ -45,8 +45,14 @@
     const h1 = document.querySelector("h1");
     const title = h1 ? h1.textContent.trim().substring(0, 80) : document.title.split("|")[0].trim();
     const path = window.location.pathname;
+    if (path === "/" || path === "" || path.endsWith("/home")) return "home";
     if (path.endsWith("/p") || path.endsWith("/p/")) return "produto: " + title;
     return "categoria: " + title;
+  }
+
+  function isHomePage() {
+    const path = window.location.pathname;
+    return path === "/" || path === "" || path.endsWith("/home");
   }
 
   // ── CSS ─────────────────────────────────────────────────────────────────────
@@ -576,7 +582,7 @@
         <button class="ml-btn-gold" id="ml-email-confirm-btn">Continuar →</button>
       </div>
       <div id="ml-input-bar" style="display:none">
-        <input id="ml-text-input" placeholder="O que você está procurando?" autocomplete="off"/>
+        <input id="ml-text-input" placeholder="O que procura? Cole um link ou descreva..." autocomplete="off"/>
         <button id="ml-send-btn" aria-label="Enviar">
           <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
         </button>
@@ -626,10 +632,18 @@
         else showEmailGate();
       } else if (state.emailConfirmed) {
         showInputBar();
-        addBotMessage("Olá! ✨ Sou sua personal shopper da Água de Coco. Me conta o que você procura — posso sugerir peças do seu estilo, completar um look ou mostrar as novidades.");
+        if (isHomePage()) {
+          addBotMessage("Olá! ✨ Posso te ajudar a montar um look? Me conta a ocasião — praia, jantar, passeio — e eu separo as peças perfeitas para você.");
+        } else {
+          addBotMessage("Olá! ✨ Sou sua personal shopper da Água de Coco. Me conta o que você procura — posso sugerir peças do seu estilo, completar um look ou mostrar as novidades.");
+        }
       } else {
         showEmailGate();
-        addBotMessage("Olá! Sou sua personal shopper da Água de Coco. ✨\nVou usar seu histórico para sugerir peças perfeitas para você.");
+        if (isHomePage()) {
+          addBotMessage("Olá! ✨ Posso te ajudar a montar um look perfeito. Informe seu e-mail para eu personalizar as sugestões para você.");
+        } else {
+          addBotMessage("Olá! Sou sua personal shopper da Água de Coco. ✨\nVou usar seu histórico para sugerir peças perfeitas para você.");
+        }
       }
     }
     setTimeout(() => {
@@ -884,6 +898,12 @@
         keepalive: true,
       }).catch(() => {});
     } catch (_) {}
+  }
+
+  // ── Detecta se mensagem contém URL de produto Água de Coco ───────────────
+  function extractProductUrl(text) {
+    const match = text.match(/aguadecoco\.com\.br\/([a-z0-9\-]+)\/p/i);
+    return match ? match[0] : null;
   }
 
   // ── Envio de mensagem ───────────────────────────────────────────────────────

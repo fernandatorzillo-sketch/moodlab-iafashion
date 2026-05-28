@@ -632,6 +632,51 @@ async def stylist_chat(payload: StylistChatRequest):
             "products": catalog_products[:limit],
         }
 
+    # ── 3b. Se cliente enviou URL de produto, busca no banco e injeta no contexto ──
+    linked_products: list[dict] = []
+    try:
+        import re as _re
+        _url_matches = _re.findall(
+            r'aguadecoco\.com\.br/([a-z0-9\-]+)/p', message, _re.IGNORECASE
+        )
+        if _url_matches:
+            from services.closet_db import AsyncSessionLocal as _ASL_link
+            from sqlalchemy import text as _ltxt
+            async with _ASL_link() as _ldb:
+                for slug in _url_matches[:3]:
+                    _lr = await _ldb.execute(_ltxt(
+                        "SELECT product_id, name, price, list_price, "
+                        "       category, product_type, color, print_name, "
+                        "       collection, occasion, gender, image_url, product_url "
+                        "FROM catalog_products "
+                        "WHERE product_url LIKE :slug AND is_active = 1 LIMIT 1"
+                    ), {"slug": f"%/{slug}/p"})
+                    _lrow = _lr.fetchone()
+                    if _lrow:
+                        def _fmt2(v):
+                            try:
+                                c = round(float(v) * 100)
+                                return f"R$ {c//100:,}".replace(",",".") + f",{c%100:02d}"
+                            except Exception:
+                                return str(v) if v else ""
+                        linked_products.append({
+                            "product_id":   str(_lrow[0]),
+                            "name":         _lrow[1] or "",
+                            "price":        _fmt2(_lrow[2]),
+                            "list_price":   _fmt2(_lrow[3]) if (_lrow[3] and float(_lrow[3] or 0) > float(_lrow[2] or 0)) else "",
+                            "category":     _lrow[4] or "",
+                            "product_type": (_lrow[5] or "").upper(),
+                            "color":        _lrow[6] or "",
+                            "print_name":   (_lrow[7] or "").upper(),
+                            "collection":   _lrow[8] or "",
+                            "occasion":     (_lrow[9] or "").upper(),
+                            "gender":       (_lrow[10] or "").upper(),
+                            "image_url":    _lrow[11] or "",
+                            "url":          _lrow[12] or "",
+                        })
+    except Exception:
+        pass
+
     # ── 4. Detecta contexto — mensagem atual + histórico do usuário ──────────
     msg_lower = message.lower()
     hist_user = " ".join(
@@ -738,6 +783,22 @@ async def stylist_chat(payload: StylistChatRequest):
             seen_ids.add(p["product_id"])
 
     # ── 8. Monta catálogo para o prompt (campos do cadastro VTEX) ────────────
+    # Produtos linkados pelo cliente (URL colada no chat)
+    linked_lines = ""
+    if linked_products:
+        linked_lines = "PRODUTOS ENVIADOS PELO CLIENTE (URLs coladas no chat):\n"
+        for p in linked_products:
+            linked_lines += (
+                f"ID:{p['product_id']}|NOME:{p['name']}"
+                f"|COR:{p['color']}|ESTAMPARIA:{p['print_name']}"
+                f"|TIPO:{p['product_type']}|OCASIAO:{p['occasion']}"
+                f"|PRECO:{p['price']}|URL:{p['url']}\n"
+            )
+        linked_lines += (
+            "→ O cliente enviou esses produtos. Use-os como BASE para sugerir complementos.\n"
+            "→ Se pediu 'o que combina com isso', sugira peças que completam o look.\n"
+        )
+
     # Cada linha expõe os dados estruturados que a IA usa para decidir
     # PRINT_NAME é o campo real do cadastro: LISO / ESTAMPADO / LISO TRABALHADO
     catalog_lines = "\n".join(
@@ -778,6 +839,7 @@ CLIENTE: {client_name}
 {profile_text}
 {page_ctx}
 {mix_hint}
+{linked_lines}
 
 IMPORTANTE: O catálogo abaixo = produtos DISPONÍVEIS. O perfil acima = peças que ela JÁ TEM.
 Se ela menciona peça que já tem ("meu biquini X"), NÃO diga que não temos — sugira complementos.
