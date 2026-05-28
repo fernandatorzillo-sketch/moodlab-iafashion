@@ -646,6 +646,131 @@ async def stylist_chat(payload: StylistChatRequest):
     except Exception:
         pass
 
+    # ── 2b. FAQ — respostas instantâneas para perguntas frequentes ─────────────
+    # Intercepta antes de chamar a IA — sem custo de API, resposta imediata
+    _msg_faq = message.lower().strip()
+
+    _FAQ = [
+        {
+            "keywords": ["tem promoção","tem promocao","tem sale","ver sale","ver promoção",
+                         "o que tem de promoção","peças em promoção","alguma promoção","promoções",
+                         "quero promoção","quero promocao","quero sale"],
+            "message": f"{client_name}, temos nossa categoria SALE com peças especiais com até 70% OFF! 🎉 Separei algumas opções com preço especial para você:",
+            "action": "sale",
+        },
+        {
+            "keywords": ["tenho cashback","meu cashback","saldo cashback","tenho bônus","tenho bonus",
+                         "verificar cashback","consultar cashback","ver cashback","cashback disponível",
+                         "quanto tenho de cashback"],
+            "message": f"{client_name}, para consultar seu cashback disponível: verifique suas mensagens de texto no telefone cadastrado e clique no link recebido para resgatar seu bônus. O link é enviado automaticamente após cada compra elegível. 📱",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["como usar cashback","como resgatar cashback","usar cashback",
+                         "resgatar cashback","como funciona cashback","onde coloco cashback"],
+            "message": f"{client_name}, para usar seu cashback: 1️⃣ Gere seu cupom pelo link recebido no SMS. 2️⃣ Confira o valor mínimo de compra. 3️⃣ No checkout, insira o código no campo Cupom de desconto. 🛒",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["vale compras","vale-compras","gift card","vale presente","como usar vale",
+                         "usar vale compras","tenho vale","meu vale","onde uso o vale"],
+            "message": f"{client_name}, seu vale compras funciona como forma de pagamento. No checkout, insira o código no campo Vale presente — o valor será abatido automaticamente do total. 🎁",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["tem cupom","cupom de desconto","código de desconto","cupom primeira compra",
+                         "desconto primeira compra","primeira compra desconto","welcome","cupom welcome",
+                         "algum cupom","tem desconto para"],
+            "message": f"{client_name}, se essa é sua primeira compra conosco, use o cupom WELCOME para 10% OFF* no checkout! 🎊 Cadastre-se na newsletter para acompanhar campanhas especiais. *Consulte as condições em nossa política de promoção.",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["tem frete grátis","frete gratis","frete gratuito","quanto é o frete",
+                         "valor do frete","frete","entrega grátis","prazo de entrega"],
+            "message": f"{client_name}, frete grátis para compras acima de R$ 700! 🚚 Abaixo desse valor, o frete é calculado no checkout pelo CEP. O prazo de entrega varia por região — acompanhe pelo link enviado por e-mail.",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["como trocar","como devolver","política de troca","prazo de troca",
+                         "quero trocar","quero devolver","troca","devolução","devolucao","arrependimento"],
+            "message": f"{client_name}, você tem até 7 dias após o recebimento para solicitar troca ou devolução. Acesse nosso portal: https://front.geniusreturns.com.br/pages/default.aspx?alias=aguadecoco — ou clique no botão Ajuda aqui no site para falar com nossos atendentes. 🔄",
+            "action": "faq_only",
+        },
+        {
+            "keywords": ["tabela de medidas","como sei meu tamanho","qual meu tamanho",
+                         "tamanho ideal","como escolher tamanho","numeração"],
+            "message": f"{client_name}, cada produto tem uma Tabela de Medidas na página — clique em 'Tabela de medidas' abaixo do seletor de tamanho. Use também o Tamanho Ideal para uma sugestão personalizada! 📏",
+            "action": "faq_only",
+        },
+    ]
+
+    _faq_match = None
+    for faq in _FAQ:
+        if any(kw in _msg_faq for kw in faq["keywords"]):
+            _faq_match = faq
+            break
+
+    if _faq_match:
+        # FAQ de promoção: busca produtos SALE e retorna com eles
+        if _faq_match["action"] == "sale":
+            _sale_products = [
+                p for p in catalog_products
+                if p.get("list_price") or "sale" in (p.get("department") or "").lower()
+            ][:6]
+            if not _sale_products:
+                try:
+                    from services.closet_db import AsyncSessionLocal as _ASL_s
+                    from sqlalchemy import text as _st_s
+                    async with _ASL_s() as _sdb:
+                        _sr = await _sdb.execute(_st_s(
+                            "SELECT cp.product_id, cp.name, cp.price, cp.list_price, "
+                            "       cp.image_url, cp.product_url "
+                            "FROM catalog_products cp "
+                            "INNER JOIN inventory_by_sku inv ON inv.sku_id = cp.sku_id "
+                            "WHERE cp.is_active=1 AND inv.is_available=1 AND inv.quantity>0 "
+                            "  AND cp.image_url IS NOT NULL AND cp.product_url IS NOT NULL "
+                            "  AND (cp.list_price IS NOT NULL AND cp.list_price > cp.price "
+                            "       OR LOWER(COALESCE(cp.department,'')) LIKE 'sale%') "
+                            "  AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO') "
+                            "ORDER BY RANDOM() LIMIT 6"
+                        ))
+                        _sale_rows = _sr.fetchall()
+                    def _fs(v):
+                        try:
+                            c = round(float(v)*100)
+                            return f"R$ {c//100:,}".replace(",",".")+f",{c%100:02d}"
+                        except Exception: return str(v) if v else ""
+                    _sale_products = [{
+                        "id": str(r[0]), "name": r[1],
+                        "price": _fs(r[2]),
+                        "list_price": _fs(r[3]) if r[3] and float(r[3] or 0)>float(r[2] or 0) else "",
+                        "image_url": r[4], "url": r[5],
+                    } for r in _sale_rows]
+                except Exception:
+                    _sale_products = []
+            else:
+                _sale_products = [{
+                    "id": p["product_id"], "name": p["name"],
+                    "price": p["price"], "list_price": p.get("list_price",""),
+                    "image_url": p["image_url"], "url": p["url"],
+                } for p in _sale_products]
+            return {"message": _faq_match["message"], "products": _sale_products}
+
+        # FAQ informativo: retorna direto sem chamar a IA
+        try:
+            from services.closet_db import AsyncSessionLocal as _ASL_faq
+            from sqlalchemy import text as _st_faq
+            async with _ASL_faq() as _fdb:
+                await _fdb.execute(_st_faq(
+                    "INSERT INTO recommendation_clicks (email, product_id, occasion, source, clicked_at) "
+                    "VALUES (:e, 'faq', :occ, 'widget_stylist_chat', NOW())"
+                ), {"e": email, "occ": message[:100]})
+                await _fdb.commit()
+        except Exception:
+            pass
+        return {"message": _faq_match["message"], "products": []}
+
+
     # ── 3. Fallback sem IA ───────────────────────────────────────────────────
     anthropic_key = _os.environ.get("ANTHROPIC_API_KEY", "")
     if not anthropic_key or not catalog_products:
