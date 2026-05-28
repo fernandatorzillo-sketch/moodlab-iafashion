@@ -1125,19 +1125,28 @@ async def get_conversion_stats():
 
             # ── Taxa de conversão: clientes que usaram widget E compraram depois ──
             r_conv = await s.execute(text("""
-                SELECT
-                  COUNT(DISTINCT rc.email) as widget_users,
-                  COUNT(DISTINCT o.email) as converted,
-                  COALESCE(SUM(o.total_value), 0) as revenue_after_chat,
-                  COUNT(DISTINCT o.order_id) as orders_after_chat
-                FROM recommendation_clicks rc
-                LEFT JOIN orders o ON (
-                  (o.email = rc.email OR o.email LIKE rc.email || '-%')
-                  AND o.creation_date >= rc.clicked_at
-                  AND o.creation_date <= rc.clicked_at + INTERVAL '72 hours'
-                  AND o.status NOT IN ('canceled', 'canceling')
+                WITH widget_conversions AS (
+                  SELECT DISTINCT
+                    rc.email as widget_email,
+                    o.order_id,
+                    o.email as order_email,
+                    o.total_value
+                  FROM recommendation_clicks rc
+                  INNER JOIN orders o ON (
+                    (o.email = rc.email OR o.email LIKE rc.email || '-%')
+                    AND o.creation_date >= rc.clicked_at
+                    AND o.creation_date <= rc.clicked_at + INTERVAL '72 hours'
+                    AND o.status NOT IN ('canceled', 'canceling')
+                  )
+                  WHERE rc.source = 'widget_stylist_chat'
                 )
-                WHERE rc.source = 'widget_stylist_chat'
+                SELECT
+                  (SELECT COUNT(DISTINCT email) FROM recommendation_clicks
+                   WHERE source = 'widget_stylist_chat') as widget_users,
+                  COUNT(DISTINCT widget_email) as converted,
+                  COALESCE(SUM(total_value), 0) as revenue_after_chat,
+                  COUNT(DISTINCT order_id) as orders_after_chat
+                FROM widget_conversions
             """))
             conv = r_conv.fetchone()
             widget_users = conv[0] or 0
