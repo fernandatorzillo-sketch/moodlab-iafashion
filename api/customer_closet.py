@@ -109,13 +109,18 @@ async def stylist_chat(payload: StylistChatRequest):
     profile_text = ""
     memory_text  = ""
 
-    # ── 1. Perfil da cliente (leve) ──────────────────────────────────────────
+    # ── 1. Perfil da cliente — closet + pedidos reais + memória IA ─────────
+    # Três fontes em paralelo para máxima personalização:
+    # 1) customer_closet_items: peças que a cliente já tem
+    # 2) order_items + catalog_products: histórico real de compras na VTEX
+    # 3) client_memory: resumo acumulado de conversas anteriores
     try:
         from services.closet_db import AsyncSessionLocal
         from sqlalchemy import text as _txt
         from collections import Counter
 
         async with AsyncSessionLocal() as db:
+            # Nome
             r = await db.execute(_txt(
                 "SELECT name FROM customers WHERE email=:e LIMIT 1"
             ), {"e": email})
@@ -123,6 +128,7 @@ async def stylist_chat(payload: StylistChatRequest):
             if row and row[0]:
                 client_name = row[0].split()[0]
 
+            # Fonte 1: closet virtual (peças que já tem)
             r2 = await db.execute(_txt("""
                 SELECT cp.color, cp.size, cp.print_name, cp.collection,
                        cci.name, cp.category, cp.product_type
@@ -131,11 +137,30 @@ async def stylist_chat(payload: StylistChatRequest):
                 WHERE cci.email = :e
                 ORDER BY cci.purchase_count DESC LIMIT 30
             """), {"e": email})
-            rows = r2.fetchall()
+            closet_rows = r2.fetchall()
 
-            colors, sizes, cats = Counter(), Counter(), Counter()
+            # Fonte 2: pedidos reais (histórico de compras na VTEX)
+            order_rows = []
+            try:
+                ro = await db.execute(_txt("""
+                    SELECT cp.color, cp.size, cp.product_type, cp.occasion,
+                           oi.name, cp.category
+                    FROM order_items oi
+                    INNER JOIN orders o ON o.order_id = oi.order_id
+                    LEFT JOIN catalog_products cp ON cp.product_id::text = oi.product_id::text
+                    WHERE o.email = :e
+                      AND o.status NOT IN ('canceled','canceling')
+                    ORDER BY o.creation_date DESC LIMIT 40
+                """), {"e": email})
+                order_rows = ro.fetchall()
+            except Exception:
+                pass
+
+            colors, sizes, cats, occasions_bought = Counter(), Counter(), Counter(), Counter()
             closet_tops = []
-            for color, size, print_n, coll, name, cat, ptype in rows:
+
+            # Processa closet
+            for color, size, print_n, coll, name, cat, ptype in closet_rows:
                 if color: colors[color.lower()] += 1
                 if size:  sizes[size.upper()] += 1
                 if cat:   cats[cat.lower()] += 1
@@ -146,22 +171,39 @@ async def stylist_chat(payload: StylistChatRequest):
                     ):
                         closet_tops.append({"name": name, "collection": coll or ""})
 
+            # Processa pedidos reais
+            for color, size, ptype, occ, name, cat in order_rows:
+                if color: colors[color.lower()] += 1
+                if size:  sizes[size.upper()] += 1
+                if occ:   occasions_bought[occ.upper()] += 1
+                if cat:   cats[cat.lower()] += 1
+
             parts = []
-            if colors: parts.append(f"Cores favoritas: {', '.join(c for c,_ in colors.most_common(4))}")
-            if sizes:  parts.append(f"Tamanhos: {', '.join(s for s,_ in sizes.most_common(2))}")
-            if cats:   parts.append(f"Categorias frequentes: {', '.join(c for c,_ in cats.most_common(3))}")
+            if colors:   parts.append(f"Cores favoritas: {', '.join(c for c,_ in colors.most_common(4))}")
+            if sizes:    parts.append(f"Tamanhos: {', '.join(s for s,_ in sizes.most_common(2))}")
+            if cats:     parts.append(f"Categorias frequentes: {', '.join(c for c,_ in cats.most_common(3))}")
+            if occasions_bought:
+                top_occ = [o for o,_ in occasions_bought.most_common(3)]
+                parts.append(f"Ocasiões que já comprou: {', '.join(top_occ)}")
             if closet_tops:
                 parts.append(f"Sutiãs/tops no closet (sugerir calcinha do mesmo mix): "
                              + ", ".join(t["name"] for t in closet_tops[:2]))
+            if order_rows and not closet_rows:
+                parts.append(f"Histórico: {len(order_rows)} compras anteriores registradas")
             profile_text = "\n".join(parts)
 
-            # Memória
+            # Memória IA acumulada (conversas anteriores)
             mr = await db.execute(_txt(
-                "SELECT resumo_ia FROM client_memory WHERE email=:e LIMIT 1"
+                "SELECT resumo_ia, cores_favoritas, tamanhos, ocasioes_frequentes "
+                "FROM client_memory WHERE email=:e LIMIT 1"
             ), {"e": email})
             mrow = mr.fetchone()
             if mrow and mrow[0]:
-                memory_text = f"Memória prévia: {mrow[0]}"
+                mem_parts = [f"Memória de conversas anteriores: {mrow[0]}"]
+                if mrow[1]: mem_parts.append(f"Cores que gosta: {mrow[1]}")
+                if mrow[2] and not sizes: mem_parts.append(f"Tamanho habitual: {mrow[2]}")
+                if mrow[3]: mem_parts.append(f"Ocasiões frequentes: {mrow[3]}")
+                memory_text = " | ".join(mem_parts)
     except Exception:
         pass
 
@@ -211,8 +253,16 @@ async def stylist_chat(payload: StylistChatRequest):
         from sqlalchemy import text as _txt2
 
         async with AsyncSessionLocal() as db:
-            # Base: sempre exclui infantil e casa (nunca relevante para o shopper)
-            _base_where = """
+            # Base: sempre exclui infantil, casa e gênero errado
+            # Detecta gênero do cliente pelo closet ou email para filtrar
+            _gender_clause = ""
+            if profile_text:
+                # Feminino é o default para Água de Coco — filtra masculino salvo se pediu
+                _msg_has_masc = any(t in _msg_pre for t in ["masculino","marido","namorado","pai","irmão"])
+                if not _msg_has_masc:
+                    _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
+
+            _base_where = f"""
                 cp.is_active = 1
                 AND cp.image_url IS NOT NULL AND cp.image_url != ''
                 AND cp.product_url IS NOT NULL AND cp.product_url != ''
@@ -222,6 +272,7 @@ async def stylist_chat(payload: StylistChatRequest):
                 AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%infantil%'
                 AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%kids%'
                 AND LOWER(COALESCE(cp.category,'')) NOT LIKE '%casa%'
+                {_gender_clause}
             """
 
             if _type_filter:
@@ -236,15 +287,22 @@ async def stylist_chat(payload: StylistChatRequest):
                 _order = "ORDER BY RANDOM()"
                 _limit = "LIMIT 100"
 
-            # SALE: adiciona filtro de desconto MAS mantém o filtro de tipo/contexto
-            # Nunca zera _type_clause — se pediu vestido em sale, busca vestido em sale
+            # SALE: filtra por desconto MAS sempre mantém o contexto de ocasião
+            # Regra: list_price > price (desconto real) OU department sale
+            # O _type_clause de ocasião (jantar/praia/festa) NUNCA é removido
             if _is_sale_pre:
-                _base_where += " AND (cp.list_price IS NOT NULL AND cp.list_price > cp.price OR LOWER(COALESCE(cp.department,'')) LIKE 'sale%')"
-                # Só remove filtro de tipo se não há contexto de ocasião
+                _base_where += (
+                    " AND ("
+                    "  (cp.list_price IS NOT NULL AND cp.list_price > cp.price)"
+                    "  OR LOWER(COALESCE(cp.department,'')) LIKE 'sale%'"
+                    ")"
+                )
+                # Mantém _type_clause intacto — contexto de ocasião prevalece
+                # Se não há contexto de tipo, amplia para pegar mais opções de SALE
                 if not _type_filter:
                     _type_clause = ""
                 _order = "ORDER BY RANDOM()"
-                _limit = "LIMIT 80"
+                _limit = "LIMIT 60"
 
             _sql = f"""
                 SELECT cp.product_id, cp.name, cp.price, cp.list_price,
@@ -980,13 +1038,17 @@ async def get_conversion_stats():
             by_source = [{"source": r.source, "clicks": r.clicks, "unique_users": r.unique_users}
                         for r in r1.fetchall()]
 
-            # ── O que pedem no chat ──────────────────────────────────────
+            # ── O que os clientes pedem no chat (mensagens reais) ──────────
+            # Filtra apenas as mensagens de chat (product_id = 'stylist_chat')
+            # excluindo os cliques em produtos (que têm product_id real)
             r2 = await s.execute(text("""
                 SELECT occasion, COUNT(*) as cnt
                 FROM recommendation_clicks
                 WHERE source = 'widget_stylist_chat'
-                  AND occasion IS NOT NULL AND occasion != '' AND occasion != 'stylist_chat'
-                GROUP BY occasion ORDER BY cnt DESC LIMIT 10
+                  AND product_id = 'stylist_chat'
+                  AND occasion IS NOT NULL
+                  AND LENGTH(TRIM(occasion)) > 3
+                GROUP BY occasion ORDER BY cnt DESC LIMIT 15
             """))
             top_requests = [{"request": r.occasion, "count": r.cnt} for r in r2.fetchall()]
 
