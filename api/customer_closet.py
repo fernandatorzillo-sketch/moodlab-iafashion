@@ -1,5 +1,6 @@
 import json
 import os
+from collections import defaultdict
 from typing import Any
 
 import httpx
@@ -425,7 +426,6 @@ async def stylist_chat(payload: StylistChatRequest):
     # Monta catálogo balanceado: tops + bottoms + complementos
     balanced = []
     priority_order = ["MAIO","SUNGA","PRAIA_TOP","PRAIA_BOTTOM","SAIDA","VESTIDO","TOP","TOP_MASC","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO"]
-    from collections import defaultdict  # garantia de import no escopo
     # Detecta cor pedida na mensagem para boosting
     _color_keywords = {
         "branco": "branco", "white": "branco",
