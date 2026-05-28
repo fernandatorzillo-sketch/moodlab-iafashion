@@ -183,7 +183,13 @@ async def run() -> None:
                             row.size         = spec("tamanho")
                             row.gender       = spec("0- gênero") or spec("gênero") or spec("genero")
                             # Linha: AGUA=praia, VIDA=roupa, LUZ=festa, UNDERWEAR
-                            row.collection   = spec("0- linha") or spec("linha") or spec("coleção") or spec("colecao")
+                            _linha_val = spec("0- linha") or spec("linha")
+                            _mix_val   = spec("1- coleção") or spec("coleção") or spec("colecao")
+                            # Mantém collection para retrocompatibilidade (linha tem prioridade)
+                            row.collection = _linha_val or _mix_val
+                            # Novos campos separados
+                            row.linha = _linha_val.upper().strip() if _linha_val else None
+                            row.mix   = _mix_val.strip() if _mix_val else None
 
                             row.image_url = (first_sku or {}).get("ImageUrl")
 
@@ -201,6 +207,19 @@ async def run() -> None:
 
                             row.is_active = 1
                             row.raw_json  = {"product": product, "sku": first_sku}
+
+                            # Extrai list_price (preço De) do commertialOffer do SKU
+                            try:
+                                _sellers = (first_sku or {}).get("sellers") or []
+                                _offer   = (_sellers[0].get("commertialOffer") or {}) if _sellers else {}
+                                _lp      = _offer.get("ListPrice") or _offer.get("listPrice")
+                                _price   = _offer.get("Price") or _offer.get("price")
+                                if _lp and _price and float(_lp) > float(_price):
+                                    row.list_price = float(_lp)
+                                else:
+                                    row.list_price = None
+                            except Exception:
+                                row.list_price = None
 
                             total_upserts += 1
                             if total_upserts % 100 == 0:

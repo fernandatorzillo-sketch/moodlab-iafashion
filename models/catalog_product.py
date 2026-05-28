@@ -25,8 +25,17 @@ class CatalogProduct(Base):
     gender: Mapped[str | None] = mapped_column(String(120), nullable=True)
     collection: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # Preço de venda (bestPriceWithTax / sellingPrice da VTEX, em R$)
+    # Campos separados (migration add_linha_mix_fields)
+    # linha: universo da marca — AGUA (praia), VIDA (lifestyle), LUZ (festa), UNDERWEAR
+    linha: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # mix: nome do mix/coleção para pareamento (ex: "Báltico", "Copa", "Ipanema")
+    mix: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Preço de venda atual (Por / sellingPrice da VTEX, em R$)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Preço original antes do desconto (De / ListPrice da VTEX, em R$)
+    # Preenchido via backfill_list_price.py + sync_catalog_incremental
+    list_price: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_url: Mapped[str | None] = mapped_column(Text, nullable=True)

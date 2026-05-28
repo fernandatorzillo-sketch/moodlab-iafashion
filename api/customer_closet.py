@@ -165,29 +165,98 @@ async def stylist_chat(payload: StylistChatRequest):
     except Exception:
         pass
 
-    # ── 2. Catálogo ──────────────────────────────────────────────────────────
-    # Carrega TODOS os campos relevantes do cadastro VTEX
+    # ── 2. Catálogo — query por contexto da conversa ────────────────────────
+    # Detecta contexto ANTES da query para carregar só o necessário
+    # (evita pegar 120 produtos genéricos e filtrar depois)
+    _msg_pre = (message + " " + " ".join(
+        h.content for h in (payload.history or [])[-4:] if h.role == "user"
+    )).lower()
+    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono"])
+    _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"])
+    _is_sale_pre   = any(t in _msg_pre for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato"])
+    _is_cold_pre   = any(t in _msg_pre for t in ["frio","inverno","tricô","trico","casaco"])
+    _is_casual_pre = any(t in _msg_pre for t in ["casual","dia a dia","passeio","shopping","trabalho"])
+
+    # Tipos de produto relevantes por contexto
+    # Sempre inclui calçados, bolsas e acessórios como complementos de look
+    _COMPLEMENTS = ("SANDALIA","SANDÁLIAS","CALCADO","CALÇADOS","CHINELO","RASTEIRA",
+                    "BOLSA","NECESSAIRE","BRINCO","COLAR","PULSEIRA","ANEL",
+                    "CHAPEU/BONE/VISEIRA","CHAPÉU","OCULOS","ÓCULOS","CINTO","LENCO")
+    _BEACH_TYPES  = ("BIQUINI SUTIA","SUTIA","BIQUINI CALCINHA","CALCINHA",
+                     "MAIO","SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO",
+                     "CAPA","CANGA","TUNICA","PAREO") + _COMPLEMENTS
+    _PARTY_TYPES  = ("VESTIDO","MACACÃO","MACACAO","CHEMISE","BLUSA/TOP","BLUSA",
+                     "TOP","CAMISETA","CAMISA","BODY","CROPPED","CALCA","SAIA") + _COMPLEMENTS
+    _COLD_TYPES   = ("JAQUETA/BLAZER/PARKA","JAQUETA","BLAZER","MOLETOM","TRICO","TRICÔ",
+                     "VESTIDO","CALCA","SAIA","BLUSA/TOP","BLUSA") + _COMPLEMENTS
+    _CASUAL_TYPES = ("VESTIDO","MACACÃO","BLUSA/TOP","BLUSA","TOP","CAMISETA","CAMISA",
+                     "BODY","CROPPED","CALCA","SAIA","SHORT","BERMUDA") + _COMPLEMENTS
+
+    # Monta filtro de product_type para a query
+    if _is_beach_pre and not _is_party_pre:
+        _type_filter = _BEACH_TYPES
+    elif _is_party_pre and not _is_beach_pre:
+        _type_filter = _PARTY_TYPES
+    elif _is_cold_pre:
+        _type_filter = _COLD_TYPES
+    elif _is_casual_pre:
+        _type_filter = _CASUAL_TYPES
+    else:
+        _type_filter = None  # sem filtro de tipo — contexto ambíguo
+
+    # Filtro de departamento: inclui TODOS (feminino + sale + masculino)
+    # Varia conforme comportamento de compra do cliente (sem exclusão hard)
+    _dept_clause = ""  # sem restrição — mostra tudo que tem estoque
+
     catalog_products: list[dict] = []
     try:
         from services.closet_db import AsyncSessionLocal
         from sqlalchemy import text as _txt2
 
         async with AsyncSessionLocal() as db:
-            r3 = await db.execute(_txt2("""
+            # Query base — inclui list_price para produtos em promoção
+            _base_where = """
+                cp.is_active = 1
+                AND cp.image_url IS NOT NULL AND cp.image_url != ''
+                AND cp.product_url IS NOT NULL AND cp.product_url != ''
+                AND cp.price > 0
+                AND inv.is_available = 1 AND inv.quantity > 0
+            """
+
+            # Se tem contexto definido: busca por tipo + complementos (< 80 produtos)
+            # Se contexto ambíguo: busca ampla com RANDOM() para variedade
+            if _type_filter:
+                _placeholders = ", ".join(f":t{i}" for i in range(len(_type_filter)))
+                _params = {f"t{i}": v for i, v in enumerate(_type_filter)}
+                _type_clause = f"AND UPPER(cp.product_type) IN ({_placeholders})"
+                _order = "ORDER BY RANDOM()"
+                _limit = "LIMIT 80"
+            else:
+                _params = {}
+                _type_clause = ""
+                _order = "ORDER BY RANDOM()"
+                _limit = "LIMIT 100"
+
+            # Promoção: inclui também produtos sem estoque no SALE (se pediu sale)
+            if _is_sale_pre:
+                _base_where += " AND (cp.list_price IS NOT NULL OR LOWER(cp.department) LIKE 'sale%')"
+                _type_clause = ""  # sem filtro de tipo em SALE — mostra tudo disponível
+                _order = "ORDER BY RANDOM()"
+                _limit = "LIMIT 80"
+
+            _sql = f"""
                 SELECT cp.product_id, cp.name, cp.price, cp.list_price,
                        cp.category, cp.product_type, cp.image_url, cp.product_url,
                        cp.color, cp.collection, cp.occasion, cp.print_name,
                        cp.gender, cp.department
                 FROM catalog_products cp
                 INNER JOIN inventory_by_sku inv ON inv.sku_id = cp.sku_id
-                WHERE cp.is_active = 1
-                  AND cp.image_url IS NOT NULL AND cp.image_url != ''
-                  AND cp.product_url IS NOT NULL AND cp.product_url != ''
-                  AND cp.price > 0
-                  AND inv.is_available = 1 AND inv.quantity > 0
-                ORDER BY cp.updated_at DESC
-                LIMIT 120
-            """))
+                WHERE {_base_where}
+                {_type_clause}
+                {_order}
+                {_limit}
+            """
+            r3 = await db.execute(_txt2(_sql), _params)
             for (pid, name, price, list_p, cat, ptype, img, url,
                  color, coll, occ, print_n, gender, dept) in r3.fetchall():
                 if not name or not img or not url:
@@ -424,6 +493,19 @@ async def stylist_chat(payload: StylistChatRequest):
     is_sale   = any(t in msg_lower for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato","economizar"])
     is_saida  = any(t in ctx for t in ["saída","saida","capa","kimono","canga","túnica","tunica","pareo","kaftan"])
 
+    # Detecta estampa/mix específico pedido (ex: "camuflado", "báltico", "floral")
+    # Pré-boosting Python: garante que produtos do mix pedido chegam ao topo do catálogo
+    _estampa_keywords = [
+        "camuflado","báltico","baltico","copa","ipanema","java","floral","listrad",
+        "animal print","onça","oncinha","tie dye","patchwork","xadrez","bolinhas",
+        "radiante","kairos","atlântico","atlantico","tropical","coqueiro","geometr",
+    ]
+    requested_mix = ""
+    for kw in _estampa_keywords:
+        if kw in ctx:
+            requested_mix = kw
+            break
+
     # ── 5. Filtra catálogo por contexto de ocasião ───────────────────────────
     # Usa APENAS campos do cadastro — zero heurística de nome de produto
     filtered: list[dict] = []
@@ -453,17 +535,24 @@ async def stylist_chat(payload: StylistChatRequest):
 
         filtered.append(p)
 
-    # ── 6. Filtro SALE — aplica em cima do filtro de ocasião (não substitui) ─
+    # ── 6. Filtro SALE — usa list_price real + department='Sale' ──────────────
+    # A query já pré-filtrou por list_price/sale quando is_sale_pre=True
+    # Aqui só garantimos que os produtos têm desconto ou são do dept Sale
     if is_sale:
-        sale_ctx = [p for p in filtered if p.get("list_price")]
-        if len(sale_ctx) < 3:
-            # Fallback: categoria sale dentro do contexto
-            sale_ctx = [p for p in filtered
-                       if "sale" in (p.get("category") or "").lower() or p.get("list_price")]
+        sale_ctx = [p for p in filtered
+                    if p.get("list_price")
+                    or "sale" in (p.get("department") or "").lower()]
         if len(sale_ctx) >= 3:
             filtered = sale_ctx
 
-    # ── 7. Balanceia por tipo para diversidade ───────────────────────────────
+    # ── 7. Boost por mix/estampa pedido — produtos com a estampa vão ao topo ──
+    if requested_mix:
+        def _mix_score(p):
+            n = (p.get("name") or "").lower()
+            return 2 if requested_mix in n else (1 if p.get("print_name","").upper() == "LISO" else 0)
+        filtered.sort(key=_mix_score, reverse=True)
+
+    # Balanceia por tipo para diversidade
     from collections import defaultdict as _dd
     by_type = _dd(list)
     for p in filtered:
@@ -509,10 +598,18 @@ async def stylist_chat(payload: StylistChatRequest):
         for p in balanced[:35]
     )
 
-    page_ctx   = f"Página atual: {payload.page_context}" if payload.page_context else ""
-    sale_hint  = (
-        "PROMOÇÃO: priorize produtos com campo DE: preenchido. "
-        "Cite o preço original e o desconto. Se não houver desconto, mencione 'seleção especial SALE'."
+    page_ctx  = f"Página atual: {payload.page_context}" if payload.page_context else ""
+    mix_hint  = (
+        f"ATENÇÃO MIX: cliente pediu '{requested_mix}'. "
+        f"Priorize produtos cujo NOME contenha '{requested_mix}'. "
+        f"Lisas neutras só como complemento — NUNCA outra estampa no lugar."
+    ) if requested_mix else ""
+    sale_hint = (
+        "PROMOÇÃO SOLICITADA: use APENAS produtos com campo DE: preenchido ou do departamento SALE. "
+        "Para cada produto: cite o preço original e o por quanto está. "
+        "Ex: 'De R$799 por R$399 — 50% off'. "
+        "Mesmo em promoção, monte um LOOK COERENTE — peças que combinam entre si por cor e estilo. "
+        "Não sugira peças aleatórias só por estarem em promoção."
     ) if is_sale else ""
 
     # ── 9. System prompt — baseado em regras de negócio reais ───────────────
@@ -525,6 +622,7 @@ CLIENTE: {client_name}
 {memory_text}
 {profile_text}
 {page_ctx}
+{mix_hint}
 
 IMPORTANTE: O catálogo abaixo = produtos DISPONÍVEIS. O perfil acima = peças que ela JÁ TEM.
 Se ela menciona peça que já tem ("meu biquini X"), NÃO diga que não temos — sugira complementos.
@@ -549,10 +647,17 @@ CAMPO LINHA (qual universo da marca):
   • LUZ       = festa/eventos — vestidos sofisticados, looks de noite
   • (vazio)   = verificar TIPO e COLECAO
 
-CAMPO MIX = nome do mix/coleção do produto (ex: "Báltico", "Ipanema", "Copa")
-  → Sutiã + calcinha DEVEM ter o MESMO valor em COLECAO (ou mesmo nome na COLECAO)
-  → Biquíni Sutiã Faixa Báltico + Biquíni Calcinha Báltico = par correto ✓
-  → Biquíni Sutiã Copa + Biquíni Calcinha Báltico = ERRADO ✗
+CAMPO MIX = palavra-chave no NOME do produto que identifica a coleção/estampa
+  → Leia o NOME: "Biquíni Sutiã Faixa BÁLTICO Marrom" → mix = Báltico
+  → Sutiã + calcinha DEVEM ter a MESMA palavra-chave no NOME
+  → Ex: "Sutiã Faixa Báltico" + "Calcinha Báltico" = ✓ mesmo mix
+  → Ex: "Sutiã Copa" + "Calcinha Báltico" = ✗ mix diferente, PROIBIDO
+
+QUANDO CLIENTE MENCIONA UMA ESTAMPA/MIX (ex: "camuflado", "báltico", "java"):
+  1. PROCURE nos NOMES do catálogo a palavra mencionada
+  2. Sugira todas as peças desse mix disponíveis (saída, calcinha, sutiã...)
+  3. Se não achar complemento do mesmo mix: lisas NEUTRAS que combinam — NUNCA outra estampa
+  4. JAMAIS substitua "camuflado" por "estampado vermelho" ou qualquer outra estampa
 
 CAMPO TIPO:
   • PRAIA_TOP    = sutiã de biquíni — precisa de PRAIA_BOTTOM da mesma COLECAO
@@ -582,9 +687,11 @@ REGRAS DE PAREAMENTO (obrigatórias)
    → Depois: saídas LISO com COR que combina com marrom (off white, bege, caramelo, areia)
    → NUNCA: saídas de coleção diferente com estampa diferente
 
-4. MIX COMPLETO DE ESTAMPA:
-   Se cliente pede "look camuflado" → TODAS as peças devem ser camuflado (mesma COLECAO ou estampa igual)
-   Se cliente pede "look floral" → base floral + LISO que combina com as cores do floral
+4. ESTAMPA ESPECÍFICA PEDIDA (camuflado, floral, listrado, tie-dye, bolinhas...):
+   → Filtre o catálogo pelos produtos cujo NOME contém essa palavra
+   → Sugira PRIMEIRO todas as peças desse mix: saída camuflada, sutiã camuflado...
+   → Se não houver saída com esse nome: peças LISAS neutras (verde, bege, off white)
+   → NUNCA substitua a estampa pedida por outra estampa diferente
 
 5. SAÍDA DE PRAIA:
    Verifique LINHA:AGUA — saídas com LINHA:VIDA são peças de lifestyle, não saída de praia
