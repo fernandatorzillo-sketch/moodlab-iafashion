@@ -261,9 +261,59 @@ async def stylist_chat(payload: StylistChatRequest):
     _CASUAL_TYPES = ("VESTIDO","MACACÃO","BLUSA/TOP","BLUSA","TOP","CAMISETA","CAMISA",
                      "BODY","CROPPED","CALCA","SAIA","SHORT","BERMUDA") + _COMPLEMENTS
 
+    # Detecta produto específico pedido (ex: boné, óculos, sandália)
+    # Esses pedidos diretos sobrepõem qualquer filtro de contexto
+    _PRODUCT_KEYWORDS = {
+        "boné":          ("CHAPEU/BONE/VISEIRA",),
+        "bone":          ("CHAPEU/BONE/VISEIRA",),
+        "chapéu":        ("CHAPEU/BONE/VISEIRA",),
+        "chapeu":        ("CHAPEU/BONE/VISEIRA",),
+        "viseira":       ("CHAPEU/BONE/VISEIRA",),
+        "óculos":        ("OCULOS","ÓCULOS"),
+        "oculos":        ("OCULOS","ÓCULOS"),
+        "sandália":      ("SANDALIA","SANDÁLIAS","RASTEIRA","CHINELO"),
+        "sandalia":      ("SANDALIA","SANDÁLIAS","RASTEIRA","CHINELO"),
+        "rasteira":      ("SANDALIA","SANDÁLIAS","RASTEIRA"),
+        "bolsa":         ("BOLSA","NECESSAIRE"),
+        "brinco":        ("BRINCO",),
+        "colar":         ("COLAR",),
+        "pulseira":      ("PULSEIRA",),
+        "cinto":         ("CINTO",),
+        "lenço":         ("LENCO",),
+        "lenco":         ("LENCO",),
+        "vestido":       ("VESTIDO","MACACÃO","MACACAO"),
+        "maiô":          ("MAIO",),
+        "maio":          ("MAIO",),
+        "sunga":         ("SUNGA",),
+        "biquíni":       ("BIQUINI SUTIA","BIQUINI CALCINHA"),
+        "biquini":       ("BIQUINI SUTIA","BIQUINI CALCINHA"),
+        "calça":         ("CALCA","SHORT","SAIA","BERMUDA"),
+        "calca":         ("CALCA","SHORT","SAIA","BERMUDA"),
+        "short":         ("SHORT","BERMUDA"),
+        "saia":          ("SAIA",),
+        "blusa":         ("BLUSA/TOP","BLUSA","TOP","CAMISETA","CAMISA"),
+        "camisa":        ("CAMISA","CAMISETA"),
+        "camiseta":      ("CAMISETA","CAMISA"),
+        "saída":         ("SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO","CAPA","CANGA","TUNICA","PAREO"),
+        "saida":         ("SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO","CAPA","CANGA","TUNICA","PAREO"),
+        "canga":         ("CANGA","SAIDA DE PRAIA","SAIDA DE BANHO"),
+        "kimono":        ("CAPA/CAPA KIMONO","CAPA"),
+        "jaqueta":       ("JAQUETA/BLAZER/PARKA","JAQUETA","BLAZER"),
+        "blazer":        ("JAQUETA/BLAZER/PARKA","BLAZER"),
+    }
+
+    # Verifica se pediu produto específico (prioridade máxima)
+    _specific_types = None
+    for kw, types in _PRODUCT_KEYWORDS.items():
+        if kw in _msg_pre:
+            _specific_types = types
+            break
+
     # Monta filtro de product_type para a query
-    # SALE não zera o contexto — se estava pedindo jantar + sale, filtra vestidos em sale
-    if _is_beach_pre and not _is_party_pre:
+    if _specific_types:
+        # Produto específico pedido: busca esse tipo + complementos de look
+        _type_filter = _specific_types + _COMPLEMENTS
+    elif _is_beach_pre and not _is_party_pre:
         _type_filter = _BEACH_TYPES
     elif _is_party_pre and not _is_beach_pre:
         _type_filter = _PARTY_TYPES
@@ -272,7 +322,7 @@ async def stylist_chat(payload: StylistChatRequest):
     elif _is_casual_pre:
         _type_filter = _CASUAL_TYPES
     else:
-        _type_filter = None  # contexto ambíguo — sem filtro de tipo
+        _type_filter = None  # contexto ambíguo — busca ampla
 
     catalog_products: list[dict] = []
     try:
@@ -763,6 +813,12 @@ QUANDO CLIENTE MENCIONA UMA ESTAMPA/MIX (ex: "camuflado", "báltico", "java"):
   2. Sugira todas as peças desse mix disponíveis (saída, calcinha, sutiã...)
   3. Se não achar complemento do mesmo mix: lisas NEUTRAS que combinam — NUNCA outra estampa
   4. JAMAIS substitua "camuflado" por "estampado vermelho" ou qualquer outra estampa
+
+REGRA ABSOLUTA — NUNCA DIGA QUE NÃO TEMOS UM PRODUTO:
+Se o cliente pediu algo e você não vê no catálogo abaixo, NÃO diga "não temos" ou "não faz parte do nosso catálogo".
+Em vez disso: mostre o que temos de mais próximo e diga "Separei opções que combinam com o que você procura".
+Se o catálogo estiver limitado, ofereça o que existe sem inventar ausências.
+O catálogo que você recebe é uma AMOSTRA — pode haver mais produtos na loja.
 
 CAMPO TIPO:
   • PRAIA_TOP    = sutiã de biquíni — precisa de PRAIA_BOTTOM da mesma COLECAO
