@@ -699,6 +699,29 @@ async def stylist_chat(payload: StylistChatRequest):
     except Exception:
         pass
 
+    # ── 3c. Se cliente pediu cor/tamanho específico, boost na query ────────────
+    # Detecta cor pedida para fazer boosting no catálogo
+    _requested_color = ""
+    _color_map = {
+        "preto": "preto", "black": "preto",
+        "branco": "branco", "white": "branco",
+        "azul": "azul", "blue": "azul",
+        "verde": "verde", "green": "verde",
+        "rosa": "rosa", "pink": "rosa",
+        "marrom": "marrom", "brown": "marrom",
+        "bege": "bege", "beige": "bege",
+        "vermelho": "vermelho", "red": "vermelho",
+        "amarelo": "amarelo", "yellow": "amarelo",
+        "laranja": "laranja", "orange": "laranja",
+        "roxo": "roxo", "lilás": "roxo",
+        "dourado": "dourado", "gold": "dourado",
+        "off white": "off white", "creme": "creme",
+    }
+    for kw, cor in _color_map.items():
+        if kw in message.lower():
+            _requested_color = cor
+            break
+
     # ── 4. Detecta contexto — mensagem atual + histórico do usuário ──────────
     msg_lower = message.lower()
     hist_user = " ".join(
@@ -766,12 +789,17 @@ async def stylist_chat(payload: StylistChatRequest):
         if len(sale_ctx) >= 3:
             filtered = sale_ctx
 
-    # ── 7. Boost por mix/estampa pedido — produtos com a estampa vão ao topo ──
-    if requested_mix:
-        def _mix_score(p):
+    # ── 7. Boost por mix/estampa E por cor pedida ──────────────────────────────
+    if requested_mix or _requested_color:
+        def _boost_score(p):
             n = (p.get("name") or "").lower()
-            return 2 if requested_mix in n else (1 if p.get("print_name","").upper() == "LISO" else 0)
-        filtered.sort(key=_mix_score, reverse=True)
+            c = (p.get("color") or "").lower()
+            score = 0
+            if requested_mix and requested_mix in n: score += 3
+            if _requested_color and _requested_color in c: score += 3
+            if not requested_mix and not _requested_color: score += 1
+            return score
+        filtered.sort(key=_boost_score, reverse=True)
 
     # Balanceia por tipo para diversidade
     from collections import defaultdict as _dd
@@ -841,6 +869,12 @@ async def stylist_chat(payload: StylistChatRequest):
         f"Priorize produtos cujo NOME contenha '{requested_mix}'. "
         f"Lisas neutras só como complemento — NUNCA outra estampa no lugar."
     ) if requested_mix else ""
+    color_hint = (
+        f"ATENÇÃO COR: cliente pediu cor '{_requested_color}'. "
+        f"Priorize produtos com COR:{_requested_color} na lista. "
+        f"Se não houver na amostra, mostre o mais próximo e diga que pode acessar o site para ver mais opções nessa cor. "
+        f"NUNCA diga que não tem {_requested_color} — você tem apenas uma amostra."
+    ) if _requested_color else ""
     sale_hint = (
         "PROMOÇÃO SOLICITADA: use APENAS produtos com campo DE: preenchido ou do departamento SALE. "
         "Para cada produto com desconto: mencione De R$X por R$Y. "
@@ -861,6 +895,7 @@ CLIENTE: {client_name}
 {profile_text}
 {page_ctx}
 {mix_hint}
+{color_hint}
 {linked_lines}
 
 IMPORTANTE: O catálogo abaixo = produtos DISPONÍVEIS. O perfil acima = peças que ela JÁ TEM.
@@ -898,11 +933,13 @@ QUANDO CLIENTE MENCIONA UMA ESTAMPA/MIX (ex: "camuflado", "báltico", "java"):
   3. Se não achar complemento do mesmo mix: lisas NEUTRAS que combinam — NUNCA outra estampa
   4. JAMAIS substitua "camuflado" por "estampado vermelho" ou qualquer outra estampa
 
-REGRA ABSOLUTA — NUNCA DIGA QUE NÃO TEMOS UM PRODUTO:
-Se o cliente pediu algo e você não vê no catálogo abaixo, NÃO diga "não temos" ou "não faz parte do nosso catálogo".
-Em vez disso: mostre o que temos de mais próximo e diga "Separei opções que combinam com o que você procura".
-Se o catálogo estiver limitado, ofereça o que existe sem inventar ausências.
-O catálogo que você recebe é uma AMOSTRA — pode haver mais produtos na loja.
+REGRA ABSOLUTA — NUNCA AFIRME QUE UM PRODUTO NÃO EXISTE:
+⚠️ PROIBIDO dizer: "não temos", "não há", "não encontrei", "não disponível", "não faz parte do catálogo".
+O catálogo que você recebe é uma AMOSTRA ALEATÓRIA de produtos — NÃO é o catálogo completo.
+Se não viu preto na amostra → NÃO SABE se tem preto. Não pode afirmar que não tem.
+Se não viu maiô preto → diga: "Nessa seleção trouxe as opções disponíveis. Quer que eu busque especificamente em preto?"
+Se o cliente pede cor/tamanho específico que não aparece → mostre o mais próximo E sugira que ele acesse o site para ver todas as opções nessa cor/tamanho.
+NUNCA invente ausência de produto. Mostre sempre o que tem na amostra.
 
 CAMPO TIPO:
   • PRAIA_TOP    = sutiã de biquíni — precisa de PRAIA_BOTTOM da mesma COLECAO
