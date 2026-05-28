@@ -190,7 +190,7 @@ async def stylist_chat(payload: StylistChatRequest):
                   AND cp.price > 0
                   AND inv.is_available = 1 AND inv.quantity > 0
                 ORDER BY cp.updated_at DESC
-                LIMIT 80
+                LIMIT 100
             """))
             for pid, name, price, list_p, cat, ptype, img, url, color, coll, occ, print_n, gender in r3.fetchall():
                 if not name or not img or not url:
@@ -438,9 +438,13 @@ async def stylist_chat(payload: StylistChatRequest):
         if is_beach and not is_party:
             if tipo == "FRIO":
                 continue
-            # Remove peças de lã/tricô mesmo classificadas como SAIDA/TOP
+            # Remove peças de lã/tricô/malha mesmo classificadas como SAIDA/TOP
             p_name_lower = (p.get("name") or "").lower()
-            if any(t in p_name_lower for t in ["tricô","trico","lã ","malha","moletom","cardigan","suéter","sueter"]):
+            p_print_lower = (p.get("print_name") or "").lower()
+            if any(t in p_name_lower for t in ["tricô","trico","lã ","malha grossa","moletom","cardigan","suéter","sueter","franja","textura"]):
+                continue
+            # Também filtra por tipo de produto de frio
+            if p.get("product_type","").upper() in ("JAQUETA","BLAZER","MOLETOM","TRICO","TRICÔ"):
                 continue
         # FRIO: remove biquínis e maiôs
         if is_cold:
@@ -498,12 +502,17 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # SAIDA e complementos recebem mais slots para dar variedade
     per_type_default = max(2, 20 // max(len([t for t in priority_order if by_type[t]]), 1))
-    # Se pediu promoção, filtra só produtos com desconto (list_price > price)
+    # Se pediu promoção: prioriza produtos com desconto OU da categoria Sale
     if is_sale:
+        # Tenta filtrar por desconto real primeiro
         sale_products = [p for p in filtered_catalog if p.get("list_price")]
-        if len(sale_products) >= 5:
+        # Fallback: categoria Sale (Sale Feminino, Sale Masculino, etc)
+        if len(sale_products) < 5:
+            sale_products = [p for p in filtered_catalog
+                           if "sale" in (p.get("category") or "").lower()
+                           or p.get("list_price")]
+        if len(sale_products) >= 3:
             filtered_catalog = sale_products
-        # Reconstrói by_type com sale products
         by_type = defaultdict(list)
         for p in filtered_catalog:
             by_type[p["_tipo"]].append(p)
@@ -514,15 +523,17 @@ async def stylist_chat(payload: StylistChatRequest):
     ])
 
     per_type_map = {
-        "SAIDA": 15 if is_saida_request else 8,
-        "VESTIDO": 6,
-        "MAIO": 5,
-        "PRAIA_TOP": 4,
+        "SAIDA":      15 if is_saida_request else 8,
+        "VESTIDO":    8  if is_saida_request else 6,
+        "BOTTOM":     4  if is_saida_request else 2,  # calças/saias para complemento
+        "TOP":        3  if is_saida_request else 2,  # blusas/camisas para complemento
+        "MAIO":       5,
+        "PRAIA_TOP":  4,
         "PRAIA_BOTTOM": 4,
-        "SUNGA": 4,
-        "CALCADO": 3,
-        "BOLSA": 3,
-        "ACESSORIO": 2,
+        "SUNGA":      4,
+        "CALCADO":    3,
+        "BOLSA":      3,
+        "ACESSORIO":  2,
     }
     for tipo in priority_order:
         limit_t = per_type_map.get(tipo, per_type_default)
@@ -548,7 +559,11 @@ async def stylist_chat(payload: StylistChatRequest):
         if p.get("image_url")
     )
 
-    sale_hint = "PROMOÇÃO: O cliente quer peças em promoção. Destaque os descontos (campo DE:) e mencione a economia." if is_sale else ""
+    sale_hint = (
+        "PROMOÇÃO SOLICITADA: Priorize produtos da categoria SALE ou com campo DE: preenchido. "
+        "Mencione o preço original e o desconto. Ex: 'De R$ 599 por R$ 299'. "
+        "Se não houver desconto explícito, mencione que são peças da seleção especial SALE."
+    ) if is_sale else ""
 
     system_prompt = f"""Você é a personal shopper da Água de Coco — marca brasileira de moda praia e resort de luxo.
 Tom: sofisticado, caloroso, SEMPRE orientado à venda. Seu objetivo é converter.

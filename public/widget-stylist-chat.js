@@ -881,12 +881,15 @@
   }
 
   // ── Envio de mensagem ───────────────────────────────────────────────────────
+  let _sendDebounce = false;
   async function sendMessage() {
-    if (state.loading) return;
+    if (state.loading || _sendDebounce) return;
+    _sendDebounce = true;
+    setTimeout(() => { _sendDebounce = false; }, 1000);
 
     const input = document.getElementById("ml-text-input");
     const message = (input?.value || "").trim();
-    if (!message) return;
+    if (!message) { _sendDebounce = false; return; }
 
     input.value = "";
     input.disabled = true;
@@ -926,7 +929,11 @@
       }
     } catch (err) {
       removeTyping();
-      addBotMessage("Ops, tive um problema ao buscar sugestões. Tente novamente em instantes.");
+      // Só mostra erro se não há produtos já visíveis na conversa
+      const hasProducts = document.querySelectorAll(".ml-card").length > 0;
+      if (!hasProducts) {
+        addBotMessage("Ops, tive um problema ao buscar sugestões. Tente novamente em instantes.");
+      }
       console.error("[MoodLab]", err);
     } finally {
       // Small delay so rapid re-sends don't conflict with carousel rendering
