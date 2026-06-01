@@ -7,6 +7,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from dependencies.auth import get_admin_user
+from fastapi import Depends
 from services.customer_closet_service import get_customer_closet_payload
 from services.recommendation_service import get_customer_recommendations
 
@@ -914,7 +916,16 @@ async def stylist_chat(payload: StylistChatRequest):
         if len(sale_ctx) >= 3:
             filtered = sale_ctx
 
-    # ── 7. Boost por mix/estampa E por cor pedida ──────────────────────────────
+    # ── 7. Boost por mix/estampa E por cor + filtro de estamparia ──────────────
+    # Se cliente pediu LISO, remove produtos ESTAMPADO do catálogo (não passa para IA)
+    _pediu_liso = any(t in msg_lower for t in ["liso","sem estampa","sem estampado","básico","classico","clássico","simples"])
+    _pediu_estampado = any(t in msg_lower for t in ["estampado","estampa","floral","animal","listrado","tie dye","camuflado"])
+
+    if _pediu_liso and not _pediu_estampado:
+        filtered = [p for p in filtered
+                    if p.get("print_name","").upper() in ("LISO","LISO TRABALHADO","")
+                    or not p.get("print_name")]
+
     if requested_mix or _requested_color:
         def _boost_score(p):
             n = (p.get("name") or "").lower()
@@ -934,13 +945,19 @@ async def stylist_chat(payload: StylistChatRequest):
 
     priority = ["MAIO","SUNGA","PRAIA_TOP","PRAIA_BOTTOM","SAIDA",
                 "VESTIDO","TOP","ROUPA","BOTTOM","CALCADO","BOLSA","ACESSORIO","OUTRO","FRIO"]
+    # Se o contexto tem maiô (pediu maiô ou está na página de maiô), remove calcinhas
+    _has_maio_context = any(t in ctx for t in ["maiô","maio","body nadador","body","nadador"])
+    _has_maio_context = _has_maio_context or any(p["_tipo"] == "MAIO" for p in filtered[:10])
+
     slots = {
         "SAIDA":       15 if is_saida else 8,
         "VESTIDO":     8  if is_saida else 6,
         "BOTTOM":      4  if is_saida else 2,
         "TOP":         3  if is_saida else 2,
         "ROUPA":       4,
-        "MAIO":        5, "PRAIA_TOP": 5, "PRAIA_BOTTOM": 5,
+        "MAIO":        5,
+        "PRAIA_TOP":   0 if _has_maio_context else 5,   # não mistura biquíni com maiô
+        "PRAIA_BOTTOM": 0 if _has_maio_context else 5,  # maiô não precisa de calcinha
         "SUNGA":       4, "CALCADO": 3, "BOLSA": 3, "ACESSORIO": 2,
     }
     balanced: list[dict] = []
@@ -1070,7 +1087,7 @@ CAMPO TIPO:
   • PRAIA_TOP    = sutiã de biquíni — precisa de PRAIA_BOTTOM da mesma COLECAO
   • PRAIA_BOTTOM = calcinha de biquíni — precisa de PRAIA_TOP da mesma COLECAO
   • SAIDA        = saída de praia (kimono, canga, túnica, pareo) — complemento de biquíni/maiô
-  • MAIO         = maiô inteiro — não precisa de calcinha separada; combina com SAIDA
+  • MAIO         = maiô inteiro — peça completa, NÃO precisa de calcinha. Combina com SAIDA de praia + sandália + acessório. NUNCA sugira PRAIA_BOTTOM com um MAIO.
   • VESTIDO      = vestido ou macacão — look completo sozinho + acessório
   • TOP/ROUPA/BOTTOM = peças de roupa casual (Linha VIDA)
 
@@ -1286,8 +1303,10 @@ async def track_recommendation_click(payload: dict):
 
 
 @router.get("/conversion-stats")
-async def get_conversion_stats():
-    """Métricas ricas de conversão para o dashboard."""
+async def get_conversion_stats(
+    _user=Depends(get_admin_user),
+):
+    """Métricas ricas de conversão para o dashboard — requer autenticação admin."""
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
