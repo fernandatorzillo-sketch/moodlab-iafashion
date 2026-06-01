@@ -228,6 +228,11 @@ async def run() -> None:
 
                         except Exception as item_error:
                             print(f"ERRO ao processar product_id={product_id}: {item_error}")
+                            # Rollback crítico: libera transação corrompida para continuar
+                            try:
+                                await session.rollback()
+                            except Exception:
+                                pass
 
                     start += page_size
                     print(f"17. próxima faixa | start={start}")
