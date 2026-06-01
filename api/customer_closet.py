@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from services.customer_closet_service import get_customer_closet_payload
@@ -685,6 +685,19 @@ async def stylist_chat(payload: StylistChatRequest):
             "action": "faq_only",
         },
         {
+            "keywords": ["tamanho do meu filho","tamanho para meu filho","tamanho infantil",
+                         "tamanho criança","tamanho para criança","para meu filho","para minha filha",
+                         "meu filho usa","minha filha usa","que número infantil",
+                         "tamanho para bebê","tamanho bebe"],
+            "message": (
+                f"{client_name}, para indicar o tamanho infantil certinho, me conta: qual a **idade** do seu filho(a)? 👶\n\n"
+                "Com a idade eu já consigo sugerir o tamanho ideal.\n\n"
+                "Se tiver mais de 10 anos, vale medir busto/tórax, cintura e quadril com uma fita métrica "
+                "e conferir nossa tabela adulto — pois nessa faixa as medidas variam bastante de criança para criança!"
+            ),
+            "action": "faq_only",
+        },
+        {
             "keywords": ["tem frete grátis","frete gratis","frete gratuito","quanto é o frete",
                          "valor do frete","frete","entrega grátis","prazo de entrega"],
             "message": f"{client_name}, frete grátis para compras acima de R$ 700! 🚚 Abaixo desse valor, o frete é calculado no checkout pelo CEP. O prazo de entrega varia por região — acompanhe pelo link enviado por e-mail.",
@@ -698,8 +711,41 @@ async def stylist_chat(payload: StylistChatRequest):
         },
         {
             "keywords": ["tabela de medidas","como sei meu tamanho","qual meu tamanho",
-                         "tamanho ideal","como escolher tamanho","numeração"],
-            "message": f"{client_name}, cada produto tem uma Tabela de Medidas na página — clique em 'Tabela de medidas' abaixo do seletor de tamanho. Use também o Tamanho Ideal para uma sugestão personalizada! 📏",
+                         "tamanho ideal","como escolher tamanho","numeração",
+                         "que tamanho","qual número","qual size"],
+            "message": (
+                f"{client_name}, vou te ajudar a encontrar o tamanho ideal! 📏\n\n"
+                "Para indicar certinho, me conta:\n"
+                "• É para você ou para outra pessoa?\n"
+                "• Se for criança — qual a idade?\n"
+                "• Se for adulto — qual o busto/tórax, cintura e quadril em cm?\n\n"
+                "Enquanto isso, aqui estão nossas tabelas de referência:\n\n"
+                "👙 FEMININO — ÁGUA (biquínis, maiôs, saídas):\n"
+                "PP/XS: busto 82-86 | cintura 66-68 | quadril 94-97\n"
+                "P/S: busto 87-90 | cintura 70-72 | quadril 98-101\n"
+                "M/M: busto 91-94 | cintura 74-76 | quadril 102-105\n"
+                "G/L: busto 95-98 | cintura 78-80 | quadril 106-109\n"
+                "GG/XL: busto 99-102 | cintura 82-84 | quadril 110-113\n\n"
+                "👗 FEMININO — ROUPA (vestidos, calças, blusas):\n"
+                "PP/XS: cintura 66-69 | quadril 94-97\n"
+                "P/S: cintura 70-73 | quadril 98-102\n"
+                "M/M: cintura 74-79 | quadril 102-107\n"
+                "G/L: cintura 80-85 | quadril 108-113\n"
+                "GG/XL: cintura 86-90 | quadril 114-118\n\n"
+                "👕 MASCULINO — ROUPA (camisas, bermudas):\n"
+                "PP/XS: tórax 98-101 | cintura 80-83\n"
+                "P/S: tórax 102-105 | cintura 84-87\n"
+                "M/M: tórax 106-109 | cintura 88-91\n"
+                "G/L: tórax 110-113 | cintura 92-95\n"
+                "GG/XL: tórax 114-117 | cintura 96-99\n\n"
+                "🩲 MASCULINO — SUNGA/BOXER:\n"
+                "PP/XS: cintura 80-83 | quadril 99-102\n"
+                "P/S: cintura 84-87 | quadril 103-104\n"
+                "M/M: cintura 88-91 | quadril 107-110\n"
+                "G/L: cintura 92-95 | quadril 111-114\n"
+                "GG/XL: cintura 96-99 | quadril 115-118\n\n"
+                "👶 INFANTIL: me diga a idade da criança que indico o tamanho certo!"
+            ),
             "action": "faq_only",
         },
     ]
@@ -924,16 +970,28 @@ async def stylist_chat(payload: StylistChatRequest):
                     if p.get("print_name","").upper() in ("LISO","LISO TRABALHADO","")
                     or not p.get("print_name")]
 
-    if requested_mix or _requested_color:
-        def _boost_score(p):
-            n = (p.get("name") or "").lower()
-            c = (p.get("color") or "").lower()
-            score = 0
-            if requested_mix and requested_mix in n: score += 3
-            if _requested_color and _requested_color in c: score += 3
-            if not requested_mix and not _requested_color: score += 1
-            return score
-        filtered.sort(key=_boost_score, reverse=True)
+    # Detecta mixes estampados presentes no catálogo para puxar complementos junto
+    _estampados_no_catalogo: set = set()
+    for p in filtered:
+        if p.get("print_name","").upper() == "ESTAMPADO" and p.get("mix"):
+            _estampados_no_catalogo.add(p["mix"].lower())
+
+    def _boost_score(p):
+        n   = (p.get("name")       or "").lower()
+        c   = (p.get("color")      or "").lower()
+        mix = (p.get("mix")        or "").lower()
+        pn  = (p.get("print_name") or "").upper()
+        score = 0
+        if requested_mix and requested_mix in n:   score += 4
+        if requested_mix and requested_mix in mix: score += 3
+        if _requested_color and _requested_color in c: score += 3
+        # Complementos do mesmo mix estampado já no catálogo sobem juntos
+        if mix and mix in _estampados_no_catalogo: score += 2
+        # Lisos neutros sobem como fallback
+        if pn == "LISO" and not requested_mix:     score += 1
+        return score
+
+    filtered.sort(key=_boost_score, reverse=True)
 
     # Balanceia por tipo para diversidade
     from collections import defaultdict as _dd
@@ -1096,29 +1154,91 @@ REGRAS DE PAREAMENTO (obrigatórias)
 1. BIQUÍNI = PRAIA_TOP + PRAIA_BOTTOM com MIX IDÊNTICO. Sempre.
    Nunca sugira PRAIA_TOP sem o PRAIA_BOTTOM correspondente (e vice-versa).
 
-2. ESTAMPARIA:
-   • ESTAMPADO + LISO = look certo ✓
-   • ESTAMPADO + LISO TRABALHADO = verificar se cores combinam ✓
-   • ESTAMPADO + ESTAMPADO (estampas diferentes) = ERRADO ✗
-   • LISO + LISO = sempre ok ✓
-   • LISO TRABALHADO + LISO = ok (mas atenção à LINHA — não misturar praia com lifestyle)
+2. REGRA MESTRA DE ESTAMPARIA:
 
-3. QUANDO CLIENTE PEDE COMPLEMENTO (tem X, quer Y):
-   "Tenho o biquíni Báltico Marrom, quero saída"
-   → Primeiro: saídas MIX:Báltico (mesma coleção)
-   → Depois: saídas LISO com COR que combina com marrom (off white, bege, caramelo, areia)
-   → NUNCA: saídas de coleção diferente com estampa diferente
+   PEÇA ESTAMPADA → complementos OBRIGATORIAMENTE do mesmo MIX (mesma estampa/coleção)
+   • "Blusa Cobra Rosa" + "Calça Cobra Rosa" = ✓ CORRETO
+   • "Blusa Cobra Rosa" + "Calça Listrado Azul" = ✗ ERRADO — estampas diferentes
+   • Se NÃO houver complemento do mesmo mix → use LISO com cor que combina
+   • "Blusa Cobra Rosa" sem calça cobra → "Calça Lisa Rosa" ou "Calça Lisa Off White" = ✓
+   • NUNCA misture duas estampas diferentes num mesmo look
 
-4. ESTAMPA ESPECÍFICA PEDIDA (camuflado, floral, listrado, tie-dye, bolinhas...):
-   → Filtre o catálogo pelos produtos cujo NOME contém essa palavra
-   → Sugira PRIMEIRO todas as peças desse mix: saída camuflada, sutiã camuflado...
-   → Se não houver saída com esse nome: peças LISAS neutras (verde, bege, off white)
-   → NUNCA substitua a estampa pedida por outra estampa diferente
+   PEÇA LISA → pode combinar com ESTAMPADO ou outro LISO
+   • LISO + ESTAMPADO (cores compatíveis) = ✓
+   • LISO + LISO = ✓ sempre
+   • LISO + ESTAMPADO (cores incompatíveis) = ✗
 
-5. SAÍDA DE PRAIA:
+   LISO TRABALHADO → trate como LISO para fins de combinação
+
+3. REGRA DE UNIVERSO — não misture praia com roupa:
+   PRAIA (LINHA:AGUA): biquíni/maiô + saída de praia + sandália + acessório
+   ROUPA (LINHA:VIDA): top/blusa + calça/saia/short + sandália + acessório
+   FESTA (LINHA:LUZ): vestido + sandália elegante + bolsa + acessório
+   → NUNCA sugira saída de praia como complemento de look casual/roupa
+   → NUNCA sugira calça como complemento de biquíni
+
+4. COMPLEMENTO POR TIPO:
+   PRAIA_TOP (sutiã) → PRAIA_BOTTOM mesmo MIX + SAIDA mesmo MIX ou LISO neutro
+   PRAIA_BOTTOM (calcinha) → PRAIA_TOP mesmo MIX + SAIDA mesmo MIX ou LISO neutro
+   MAIO → SAIDA mesmo MIX ou LISO neutro (NUNCA calcinha)
+   TOP/BLUSA estampado → BOTTOM mesmo MIX, se não tiver: BOTTOM LISO cor combinando
+   BOTTOM estampado → TOP mesmo MIX, se não tiver: TOP LISO cor combinando
+   VESTIDO → sandália + acessório (look completo sozinho)
+
+5. QUANDO CLIENTE PEDE COMPLEMENTO:
+   "Tenho a Blusa Cobra Rosa, quero calça"
+   → Passo 1: busca BOTTOM com "Cobra Rosa" no nome → se achar, sugere
+   → Passo 2: se não achar → BOTTOM LISO na cor rosa, off white, bege ou nude
+   → NUNCA: BOTTOM com outra estampa diferente
+
+6. SAÍDA DE PRAIA:
    Verifique LINHA:AGUA — saídas com LINHA:VIDA são peças de lifestyle, não saída de praia
    LISO TRABALHADO + LINHA:VIDA = crochê/malha de roupa, não saída de praia
    LISO TRABALHADO + LINHA:AGUA = saída em tecido especial (ok para praia)
+
+═══════════════════════════════════════════
+TAMANHOS E MEDIDAS — REFERÊNCIA COMPLETA
+═══════════════════════════════════════════
+
+FEMININO — ÁGUA (biquínis, maiôs, saídas de praia):
+PP/XS: busto 82-86 | cintura 66-68 | quadril 94-97
+P/S:   busto 87-90 | cintura 70-72 | quadril 98-101
+M/M:   busto 91-94 | cintura 74-76 | quadril 102-105
+G/L:   busto 95-98 | cintura 78-80 | quadril 106-109
+GG/XL: busto 99-102| cintura 82-84 | quadril 110-113
+
+FEMININO — ROUPA (vestidos, calças, blusas, saídas):
+PP/XS: cintura 66-69 | quadril 94-97
+P/S:   cintura 70-73 | quadril 98-102
+M/M:   cintura 74-79 | quadril 102-107
+G/L:   cintura 80-85 | quadril 108-113
+GG/XL: cintura 86-90 | quadril 114-118
+
+MASCULINO — ROUPA (camisas, bermudas, camisetas):
+PP/XS: tórax 98-101  | cintura 80-83
+P/S:   tórax 102-105 | cintura 84-87
+M/M:   tórax 106-109 | cintura 88-91
+G/L:   tórax 110-113 | cintura 92-95
+GG/XL: tórax 114-117 | cintura 96-99
+
+MASCULINO — SUNGA/BOXER:
+PP/XS: cintura 80-83 | quadril 99-102
+P/S:   cintura 84-87 | quadril 103-104
+M/M:   cintura 88-91 | quadril 107-110
+G/L:   cintura 92-95 | quadril 111-114
+GG/XL: cintura 96-99 | quadril 115-118
+
+INFANTIL — por idade aproximada:
+2 anos → PP/XS  |  4 anos → P/S  |  6 anos → M/M
+8 anos → G/L    |  10 anos → GG/XL
+Acima de 10 anos: usar tabela adulto com medição em cm
+
+REGRAS DE INDICAÇÃO DE TAMANHO:
+→ Se cliente informa medidas em cm: consulte as tabelas acima e indique o tamanho exato
+→ Se cliente pergunta para filho/filha: SEMPRE pergunte a idade primeiro
+→ Com a idade, indique o tamanho pela tabela infantil acima
+→ Para crianças acima de 10 anos: peça busto/cintura/quadril e use tabela adulto
+→ Em caso de medidas entre dois tamanhos: sugira o maior para peças de roupa, o menor para praia (lycra tem elasticidade)
 
 ═══════════════════════════════════════════
 MATCH DE CORES 2026
@@ -1301,8 +1421,14 @@ async def track_recommendation_click(payload: dict):
 
 
 @router.get("/conversion-stats")
-async def get_conversion_stats():
+async def get_conversion_stats(request: Request):
     """Métricas ricas de conversão para o dashboard."""
+    import os as _os
+    _dash_key = _os.environ.get("DASHBOARD_SECRET_KEY", "")
+    _req_key  = request.headers.get("X-Dashboard-Key", "") or request.query_params.get("key", "")
+    if _dash_key and _req_key != _dash_key:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
