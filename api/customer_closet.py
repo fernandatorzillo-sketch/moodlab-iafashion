@@ -240,7 +240,7 @@ async def stylist_chat(payload: StylistChatRequest):
     _msg_pre = (message + " " + " ".join(
         h.content for h in (payload.history or [])[-8:] if h.role == "user"
     )).lower()
-    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono","barco","iate","deck","náutico"])
+    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono","barco","iate","deck","náutico","luau","festa na praia","reveillon na praia"])
     _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"])
     _is_sale_pre   = any(t in _msg_pre for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato"])
     _is_cold_pre   = any(t in _msg_pre for t in ["frio","inverno","tricô","trico","casaco"])
@@ -900,7 +900,7 @@ async def stylist_chat(payload: StylistChatRequest):
     )
     ctx = msg_lower + " " + hist_user  # contexto acumulado para detectar ocasião
 
-    is_beach  = any(t in ctx for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga"])
+    is_beach  = any(t in ctx for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","festa na praia","casamento na praia","aniversario na praia","reveillon na praia","luau"])
     is_cold   = any(t in ctx for t in ["frio","inverno","tricô","trico","suéter","casaco"])
     is_party  = any(t in ctx for t in ["festa","balada","jantar","evento","chique","sofisticad","formatura","casamento","aniversario","barco","iate","reveillon"])
     is_casual = any(t in ctx for t in ["casual","dia a dia","passeio","shopping","trabalho","escritorio"])
@@ -928,20 +928,22 @@ async def stylist_chat(payload: StylistChatRequest):
         tipo  = p["_tipo"]
         linha = p["linha"]
 
-        # Contexto praia: só mostra peças de praia e neutros (não FRIO, não ROUPA)
+        # Contexto praia: só mostra peças de praia e neutros (não FRIO, não ROUPA casual)
         if is_beach and not is_party:
             if tipo in ("FRIO",):
                 continue
-            # Roupa de lifestyle (Linha VIDA) não é saída de praia
             if tipo == "ROUPA":
                 continue
+        # Festa na praia: mostra praia + roupa leve (vestidos, saias) + acessórios
+        # is_beach AND is_party = festa na praia — não filtra nada de roupa
 
         # Contexto frio: não mostra biquíni/maiô
         if is_cold and not is_beach:
             if tipo in ("PRAIA_TOP", "PRAIA_BOTTOM", "MAIO", "SUNGA"):
                 continue
 
-        # Contexto festa: não mostra biquíni/maiô/sunga em look de evento
+        # Contexto festa URBANA (não praia): não mostra biquíni/maiô
+        # Festa na praia (is_party AND is_beach): mostra tudo — biquíni + saia longa é ok
         if is_party and not is_beach:
             if tipo in ("PRAIA_TOP", "PRAIA_BOTTOM", "MAIO", "SUNGA"):
                 continue
@@ -1171,11 +1173,14 @@ REGRAS DE PAREAMENTO (obrigatórias)
    LISO TRABALHADO → trate como LISO para fins de combinação
 
 3. REGRA DE UNIVERSO — não misture praia com roupa:
-   PRAIA (LINHA:AGUA): biquíni/maiô + saída de praia + sandália + acessório
-   ROUPA (LINHA:VIDA): top/blusa + calça/saia/short + sandália + acessório
-   FESTA (LINHA:LUZ): vestido + sandália elegante + bolsa + acessório
-   → NUNCA sugira saída de praia como complemento de look casual/roupa
-   → NUNCA sugira calça como complemento de biquíni
+   PRAIA/RESORT (LINHA:AGUA): biquíni/maiô + saída de praia + sandália + acessório
+   ROUPA CASUAL (LINHA:VIDA): top/blusa + calça/saia/short + sandália + acessório
+   FESTA URBANA/JANTAR (LINHA:LUZ): vestido sofisticado + sandália elegante + bolsa + acessório
+   FESTA NA PRAIA / LUAU / REVEILLON PRAIA: combina os dois universos!
+     → biquíni + saia longa OU biquíni + vestido leve OU maiô + saída elegante
+     → Peças de praia (LINHA:AGUA) + complementos sofisticados
+   → NUNCA sugira saída de praia como complemento de look de escritório/casual urbano
+   → NUNCA sugira calça de alfaiataria com biquíni
 
 4. COMPLEMENTO POR TIPO:
    PRAIA_TOP (sutiã) → PRAIA_BOTTOM mesmo MIX + SAIDA mesmo MIX ou LISO neutro
@@ -1253,12 +1258,17 @@ Neutros (combinam com TUDO): Off White · Bege · Areia · Creme · Branco
 ESTRUTURA DO LOOK POR OCASIÃO
 ═══════════════════════════════════════════
 PRAIA/RESORT:
-  Opção A: MAIO (LINHA:AGUA) + SAIDA (MIX igual OU LISO neutro) + sandália + acessório
+  Opção A: MAIO + SAIDA (MIX igual OU LISO neutro) + sandália + acessório
   Opção B: PRAIA_TOP + PRAIA_BOTTOM (MIX idêntico) + SAIDA + sandália
   → Inclua SEMPRE a saída de praia — é a peça-chave para praia
 
-FESTA/JANTAR/EVENTO: VESTIDO (LINHA:LUZ) + sandália elegante + bolsa + acessório
-  → ZERO biquíni, ZERO saída de praia
+FESTA/JANTAR/EVENTO URBANO: VESTIDO (LINHA:LUZ) + sandália elegante + bolsa + acessório
+
+FESTA NA PRAIA / LUAU / REVEILLON NA PRAIA / CASAMENTO NA PRAIA:
+  Opção A: PRAIA_TOP + PRAIA_BOTTOM + SAIA LONGA (mesmo MIX ou liso) + sandália
+  Opção B: MAIO ou BIQUÍNI + VESTIDO LEVE (LINHA:AGUA) + sandália
+  Opção C: BIQUÍNI elegante + SAIDA sofisticada (kimono, capa longa) + acessórios
+  → Combina praia + sofisticação — é o DNA da Água de Coco!
 
 CASUAL/DIA A DIA: TOP + BOTTOM (LINHA:VIDA) + sandália + acessório
 
