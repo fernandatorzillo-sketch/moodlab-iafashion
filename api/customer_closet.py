@@ -7,8 +7,6 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from dependencies.auth import get_admin_user
-from fastapi import Depends
 from services.customer_closet_service import get_customer_closet_payload
 from services.recommendation_service import get_customer_recommendations
 
@@ -1303,10 +1301,8 @@ async def track_recommendation_click(payload: dict):
 
 
 @router.get("/conversion-stats")
-async def get_conversion_stats(
-    _user=Depends(get_admin_user),
-):
-    """Métricas ricas de conversão para o dashboard — requer autenticação admin."""
+async def get_conversion_stats():
+    """Métricas ricas de conversão para o dashboard."""
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
