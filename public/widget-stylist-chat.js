@@ -674,6 +674,7 @@
 
   function closePanel() {
     state.open = false;
+    sessionStorage.setItem("ml_ps_closed", "1");  // Lembra que fechou manualmente
     document.getElementById("ml-chat-panel").classList.remove("ml-open");
     // Restaura scroll do body no mobile
     document.body.style.overflow = "";
@@ -983,7 +984,15 @@
     injectStyles();
     buildUI();
 
-    // Badge após 4s
+    // Abre automaticamente após 1.5s se não foi fechado manualmente nessa sessão
+    const wasManuallyClosed = sessionStorage.getItem("ml_ps_closed") === "1";
+    if (!wasManuallyClosed) {
+      setTimeout(() => {
+        if (!state.open) openPanel();
+      }, 1500);
+    }
+
+    // Badge após 4s se não abriu
     setTimeout(() => {
       if (!state.open) {
         const badge = document.getElementById("ml-fab-badge");
