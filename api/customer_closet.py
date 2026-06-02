@@ -98,7 +98,7 @@ async def stylist_chat(payload: StylistChatRequest):
 
     email   = str(payload.email or "").strip().lower()
     message = str(payload.message or "").strip()
-    limit   = max(2, min(int(payload.limit or 6), 8))
+    limit   = max(2, min(int(payload.limit or 8), 12))
 
     if not email:
         raise HTTPException(status_code=400, detail="E-mail é obrigatório")
@@ -1007,16 +1007,24 @@ async def stylist_chat(payload: StylistChatRequest):
     _has_maio_context = any(t in ctx for t in ["maiô","maio","body nadador","body","nadador"])
     _has_maio_context = _has_maio_context or any(p["_tipo"] == "MAIO" for p in filtered[:10])
 
+    # Se pediu produto específico (_specific_types), dar mais slots para esse tipo
+    # Ex: pediu sutiã alça → PRAIA_TOP recebe slot generoso para mostrar várias opções
+    _specific_slot = 12 if _specific_types else 5
+
     slots = {
-        "SAIDA":       15 if is_saida else 8,
-        "VESTIDO":     8  if is_saida else 6,
-        "BOTTOM":      4  if is_saida else 2,
-        "TOP":         3  if is_saida else 2,
-        "ROUPA":       4,
-        "MAIO":        5,
-        "PRAIA_TOP":   0 if _has_maio_context else 5,   # não mistura biquíni com maiô
-        "PRAIA_BOTTOM": 0 if _has_maio_context else 5,  # maiô não precisa de calcinha
-        "SUNGA":       4, "CALCADO": 3, "BOLSA": 3, "ACESSORIO": 2,
+        "SAIDA":        15 if is_saida else 8,
+        "VESTIDO":      8  if is_saida else 6,
+        "BOTTOM":       _specific_slot if _specific_types and any(t in ("CALCA","SHORT","SAIA","BERMUDA") for t in (_specific_types or ())) else (4 if is_saida else 3),
+        "TOP":          _specific_slot if _specific_types and any(t in ("BLUSA/TOP","BLUSA","TOP","CAMISETA","CAMISA") for t in (_specific_types or ())) else 3,
+        "ROUPA":        4,
+        "MAIO":         _specific_slot if _specific_types and "MAIO" in (_specific_types or ()) else 5,
+        "PRAIA_TOP":    0 if _has_maio_context else (_specific_slot if _specific_types and any(t in ("BIQUINI SUTIA","SUTIA") for t in (_specific_types or ())) else 5),
+        "PRAIA_BOTTOM": 0 if _has_maio_context else (_specific_slot if _specific_types and any(t in ("BIQUINI CALCINHA","CALCINHA") for t in (_specific_types or ())) else 5),
+        "SUNGA":        _specific_slot if _specific_types and "SUNGA" in (_specific_types or ()) else 4,
+        "CALCADO":      _specific_slot if _specific_types and any(t in ("SANDALIA","SANDÁLIAS","RASTEIRA","CHINELO") for t in (_specific_types or ())) else 3,
+        "BOLSA":        _specific_slot if _specific_types and "BOLSA" in (_specific_types or ()) else 3,
+        "ACESSORIO":    _specific_slot if _specific_types and any(t in ("CHAPEU/BONE/VISEIRA","OCULOS","ÓCULOS","BRINCO","COLAR") for t in (_specific_types or ())) else 2,
+        "SAIDA":        15 if is_saida else (_specific_slot if _specific_types and any(t in ("SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO","CAPA","CANGA","TUNICA","PAREO") for t in (_specific_types or ())) else 8),
     }
     balanced: list[dict] = []
     seen_ids: set = set()
@@ -1274,7 +1282,12 @@ CASUAL/DIA A DIA: TOP + BOTTOM (LINHA:VIDA) + sandália + acessório
 
 MENSAGEM: 2 frases diretas, persuasivas, começando com "{client_name}," (nunca "querida")
 Se promoção: destaque o quanto economiza.
-Se complemento: "Já que você tem [X], essa [Y] é perfeita para completar o look."
+Se complemento: "Já que você tem [X], aqui estão as opções para completar o look."
+
+QUANTIDADE DE PRODUTOS: sempre sugira o MÁXIMO de opções disponíveis (até o limite do catálogo).
+→ Se pediu calcinha para completar biquíni: mostre TODAS as calcinhas do mesmo mix + outras que combinam por cor
+→ Não limite a 1 produto quando há mais disponíveis — o cliente precisa de opções para escolher
+→ Curadoria com variedade = mais chance de conversão
 
 RETORNE APENAS JSON (sem markdown, sem texto antes/depois):
 {{"message":"frase calorosa máx 2 linhas","products":[{{"id":"ID exato","name":"NOME exato","price":"PRECO exato","list_price":"DE: se existir, senão vazio","image_url":"IMG exata","url":"URL exata"}}]}}"""
