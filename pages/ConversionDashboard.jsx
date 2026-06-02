@@ -57,7 +57,8 @@ export default function ConversionDashboard() {
   async function load() {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/v1/customer-closet/conversion-stats`);
+      const key = new URLSearchParams(window.location.search).get("key") || "";
+      const res = await fetch(`${API_BASE}/api/v1/customer-closet/conversion-stats?key=${key}`);
       const d = await res.json();
       setData(d);
     } catch { setError("Erro ao carregar métricas."); }
