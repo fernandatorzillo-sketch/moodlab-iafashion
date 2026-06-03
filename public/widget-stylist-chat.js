@@ -139,19 +139,22 @@
         pointer-events: none;
         transition: all 0.22s ease;
       }
-      /* Mobile: tela cheia com input sempre visível */
+      /* Mobile: sheet parcial — ocupa 72% da tela, site visível acima */
       @media (max-width: 600px) {
         #ml-chat-panel {
           position: fixed !important;
-          top: 0 !important;
+          top: auto !important;
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
           width: 100% !important;
           max-width: 100% !important;
-          max-height: 100% !important;
-          border-radius: 0 !important;
+          height: 72vh !important;
+          max-height: 72vh !important;
+          border-radius: 16px 16px 0 0 !important;
+          border-top: 2px solid ${BRAND.border} !important;
           transform: translateY(100%) !important;
+          box-shadow: 0 -4px 24px rgba(0,0,0,0.15) !important;
         }
         #ml-chat-panel.ml-open {
           transform: translateY(0) !important;
@@ -173,6 +176,16 @@
         }
         #ml-email-gate {
           padding-bottom: env(safe-area-inset-bottom, 16px) !important;
+        }
+        /* Indicador de arrasto no topo do sheet */
+        #ml-panel-header::before {
+          content: '';
+          display: block;
+          width: 36px;
+          height: 4px;
+          background: ${BRAND.border};
+          border-radius: 2px;
+          margin: 6px auto -2px;
         }
       }
       #ml-chat-panel.ml-open {
@@ -616,12 +629,8 @@
     const badge = document.getElementById("ml-fab-badge");
     panel.classList.add("ml-open");
     if (badge) badge.style.display = "none";
-    // No mobile, previne scroll do body e mantém input visível
-    if (isMobile()) {
-      document.body.style.overflow = "hidden";
-      document.body.style.position = "fixed";
-      document.body.style.width = "100%";
-    }
+    // Mobile: sheet parcial — não bloqueia scroll do body
+    // O site fica visível acima do widget
 
     const messages = document.getElementById("ml-messages");
     if (!messages.children.length) {
