@@ -1320,9 +1320,10 @@ REGRAS DE PAREAMENTO (obrigatórias)
    "A camisa para a saia listra" / "o que combina com meu biquíni" / "tenho X, quero Y"
 
    → Se o cliente NÃO mandou link da peça:
-     PEÇA O LINK antes de sugerir:
-     "Para sugerir o complemento perfeito, me manda o link da [peça] no site para eu ver
-      a estampa e cor exatas. 🔗 É só copiar o link da página do produto!"
+     MOSTRE opções do tipo pedido E peça o link para refinar:
+     "Separei algumas camisas que combinam com saias! Para acertar a estampa exata,
+      me manda o link da sua saia no site. 🔗"
+     → SEMPRE mostre produtos. Nunca retorne resposta sem produtos.
 
    → Se o cliente JÁ mandou o link (ou se a peça está no catálogo abaixo com TIPO:):
      Passo 1: identifica a cor e estampa da peça base
