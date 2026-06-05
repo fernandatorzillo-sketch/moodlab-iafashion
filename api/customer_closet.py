@@ -1574,14 +1574,8 @@ async def track_recommendation_click(payload: dict):
 
 
 @router.get("/conversion-stats")
-async def get_conversion_stats(request: Request):
+async def get_conversion_stats():
     """Métricas ricas de conversão para o dashboard."""
-    import os as _os
-    _dash_key = _os.environ.get("DASHBOARD_SECRET_KEY", "")
-    _req_key  = request.headers.get("X-Dashboard-Key", "") or request.query_params.get("key", "")
-    if _dash_key and _req_key != _dash_key:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     from services.closet_db import AsyncSessionLocal
     from sqlalchemy import text
 
