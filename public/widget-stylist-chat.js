@@ -893,6 +893,60 @@
     saveState(state);
   }
 
+  // ── Quick replies contextuais ────────────────────────────────────────────────
+  function addQuickReplies(context) {
+    const msgs = document.getElementById("ml-messages");
+    if (!msgs) return;
+
+    // Remove quick replies anteriores
+    const prev = msgs.querySelector(".ml-quick-replies");
+    if (prev) prev.remove();
+
+    // Gera chips baseados no contexto
+    const chips = [];
+    if (context === "praia" || context === "sutia" || context === "maio") {
+      chips.push("Ver opções pretas", "Quero a saída combinando", "Tem em M?", "Ver em promoção");
+    } else if (context === "roupa" || context === "vestido") {
+      chips.push("Ver outras cores", "Tem em M?", "Quero algo mais casual", "Ver em promoção");
+    } else if (context === "complemento") {
+      chips.push("Quero a calcinha combinando", "E a saída de praia?", "Ver sandálias", "Ver acessórios");
+    } else {
+      chips.push("Quero ver mais opções", "Tem em preto?", "Tem em M?", "Ver em promoção");
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "ml-quick-replies";
+    wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;padding:4px 8px 10px;";
+
+    chips.forEach(chip => {
+      const btn = document.createElement("button");
+      btn.textContent = chip;
+      btn.style.cssText = [
+        "background:transparent",
+        "border:1px solid #b7a56a",
+        "border-radius:999px",
+        "padding:5px 12px",
+        "font-size:12px",
+        "color:#b7a56a",
+        "cursor:pointer",
+        "white-space:nowrap",
+        "transition:all 0.15s",
+      ].join(";");
+      btn.onmouseover = () => { btn.style.background = "#b7a56a"; btn.style.color = "#fff"; };
+      btn.onmouseout  = () => { btn.style.background = "transparent"; btn.style.color = "#b7a56a"; };
+      btn.onclick = () => {
+        wrap.remove();
+        const input = document.getElementById("ml-text-input");
+        if (input) { input.value = chip; }
+        sendMessage();
+      };
+      wrap.appendChild(btn);
+    });
+
+    msgs.appendChild(wrap);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
   // ── Tracking de conversão ───────────────────────────────────────────────────
   function trackConversion(product) {
     try {
@@ -964,7 +1018,13 @@
 
       if (data.products?.length) {
         addProductCarousel(data.products);
-        maybeShowChips(message, data.products);
+        // Quick replies contextuais
+        const _qCtx = data.products.some(p =>
+          ["biquini","sutia","maio"].some(k => (p.category||"").toLowerCase().includes(k))
+        ) ? "praia" : data.products.some(p =>
+          ["vestido","roupa","saia","calca"].some(k => (p.category||"").toLowerCase().includes(k))
+        ) ? "roupa" : "default";
+        setTimeout(() => addQuickReplies(_qCtx), 400);
       } else if (data.message) {
         // Tem mensagem mas sem produtos — mostra só a mensagem, sem erro
       } else {

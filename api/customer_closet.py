@@ -285,8 +285,21 @@ async def stylist_chat(payload: StylistChatRequest):
         "maiô":          ("MAIO",),
         "maio":          ("MAIO",),
         "sunga":         ("SUNGA",),
+        "sutiã":         ("BIQUINI SUTIA","SUTIA"),
+        "sutia":         ("BIQUINI SUTIA","SUTIA"),
         "biquíni":       ("BIQUINI SUTIA","BIQUINI CALCINHA"),
         "biquini":       ("BIQUINI SUTIA","BIQUINI CALCINHA"),
+        # Modelos de sutiã — filtram por nome (alça/faixa/etc estão no nome do produto)
+        "alça":          ("BIQUINI SUTIA","SUTIA"),
+        "alca":          ("BIQUINI SUTIA","SUTIA"),
+        "faixa":         ("BIQUINI SUTIA","SUTIA"),
+        "cortininha":    ("BIQUINI SUTIA","SUTIA"),
+        "bandeau":       ("BIQUINI SUTIA","SUTIA"),
+        "frente única":  ("BIQUINI SUTIA","SUTIA"),
+        "frente unica":  ("BIQUINI SUTIA","SUTIA"),
+        # Modelos de calcinha
+        "hot pants":     ("BIQUINI CALCINHA","CALCINHA"),
+        "calcinha":      ("BIQUINI CALCINHA","CALCINHA"),
         "calça":         ("CALCA","SHORT","SAIA","BERMUDA"),
         "calca":         ("CALCA","SHORT","SAIA","BERMUDA"),
         "short":         ("SHORT","BERMUDA"),
@@ -304,10 +317,17 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # Verifica se pediu produto específico (prioridade máxima)
     _specific_types = None
+    _specific_kw    = None  # keyword que disparou (ex: "alça", "faixa")
     for kw, types in _PRODUCT_KEYWORDS.items():
         if kw in _msg_pre:
             _specific_types = types
+            _specific_kw    = kw
             break
+
+    # Modelo de sutiã pedido (alça, faixa, bandeau, cortininha...)
+    # Usado para filtrar por nome do produto na query SQL
+    _MODELO_KWS = {"alça","alca","faixa","cortininha","bandeau","frente única","frente unica","hot pants"}
+    _modelo_filter = _specific_kw if _specific_kw in _MODELO_KWS else None
 
     # Detecta pergunta de refinamento — mensagem curta sem novo contexto
     # Ex: "tem preto?", "tem no M?", "e em azul?", "qual o preço?"
@@ -323,8 +343,9 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # Monta filtro de product_type para a query
     if _specific_types:
-        # Produto específico pedido: busca esse tipo + complementos de look
-        _type_filter = _specific_types + _COMPLEMENTS
+        # Produto específico pedido: busca APENAS esse tipo
+        # Não mistura bolsas/acessórios quando cliente pede sutiã ou vestido
+        _type_filter = _specific_types
     elif _is_beach_pre and not _is_party_pre:
         _type_filter = _BEACH_TYPES
     elif _is_party_pre and not _is_beach_pre:
@@ -408,21 +429,68 @@ async def stylist_chat(payload: StylistChatRequest):
                 _order = "ORDER BY RANDOM()"
                 _limit = "LIMIT 60"
 
+            # Filtro por modelo: campo modelo do banco (VTEX) com fallback pelo nome
+            _modelo_clause = ""
+            if _modelo_filter:
+                _MODELO_MAP = {
+                    "alca": "ALCA", "alça": "ALCA",
+                    "faixa": "FAIXA",
+                    "cortininha": "CORTININHA",
+                    "bandeau": "FAIXA",
+                    "frente unica": "FRENTE UNICA", "frente única": "FRENTE UNICA",
+                    "hot pants": "HOT PANTS",
+                    "lacinho": "LACINHO",
+                    "bojo": "BOJO",
+                    "triangulo": "TRIANGULO",
+                    "asa delta": "ASA DELTA",
+                    "lateral": "LATERAL MEDIA",
+                }
+                _vtex_modelo = _MODELO_MAP.get(_modelo_filter.lower())
+                if _vtex_modelo:
+                    _modelo_clause = "AND UPPER(COALESCE(cp.modelo,'')) LIKE :modelo_kw"
+                    _params["modelo_kw"] = f"%{_vtex_modelo}%"
+                else:
+                    _modelo_clause = "AND LOWER(cp.name) LIKE :modelo_kw"
+                    _params["modelo_kw"] = f"%{_modelo_filter}%"
+
+            # Filtro SQL por tamanho pedido
+            _size_sql_clause = ""
+            _SIZE_KEYWORDS = {"pp", "p", "m", "g", "gg", "xg", "xs", "s", "xl", "xxl",
+                              "tamanho p", "tamanho m", "tamanho g", "tamanho pp", "tamanho gg",
+                              "no m", "no p", "no g", "no pp", "no gg"}
+            _requested_size = ""
+            for _sz in _SIZE_KEYWORDS:
+                if f" {_sz} " in f" {message.lower()} " or f" {_sz}" == f" {message.lower().strip()}":
+                    _requested_size = _sz.replace("tamanho ", "").replace("no ", "").strip().upper()
+                    break
+            if _requested_size and _specific_types:
+                _size_sql_clause = "AND UPPER(COALESCE(cp.size,'')) LIKE :req_size"
+                _params["req_size"] = f"%{_requested_size}%"
+
+            # Filtro SQL por cor quando produto específico + cor pedida
+            _color_sql_clause = ""
+            if _specific_types and _requested_color:
+                _color_sql_clause = "AND LOWER(COALESCE(cp.color,'')) LIKE :req_color"
+                _params["req_color"] = f"%{_requested_color}%"
+
             _sql = f"""
                 SELECT cp.product_id, cp.name, cp.price, cp.list_price,
                        cp.category, cp.product_type, cp.image_url, cp.product_url,
                        cp.color, cp.collection, cp.occasion, cp.print_name,
-                       cp.gender, cp.department
+                       cp.gender, cp.department, cp.modelo, cp.tecido
                 FROM catalog_products cp
                 INNER JOIN inventory_by_sku inv ON inv.sku_id = cp.sku_id
                 WHERE {_base_where}
                 {_type_clause}
+                {_modelo_clause}
+                {_color_sql_clause}
+                {_size_sql_clause}
                 {_order}
                 {_limit}
             """
             r3 = await db.execute(_txt2(_sql), _params)
             for (pid, name, price, list_p, cat, ptype, img, url,
-                 color, coll, occ, print_n, gender, dept) in r3.fetchall():
+                 color, coll, occ, print_n, gender, dept, modelo_raw, tecido_raw) in r3.fetchall():
                 if not name or not img or not url:
                     continue
                 # Normaliza URL de imagem — garante https absoluto
@@ -625,6 +693,8 @@ async def stylist_chat(payload: StylistChatRequest):
                 if linha == "VIDA" and tipo not in ("FRIO","CALCADO","BOLSA","ACESSORIO"):
                     tipo = "ROUPA"
 
+                modelo_clean = (modelo_raw or "").strip().upper()
+                tecido_clean = (tecido_raw or "").strip()
                 catalog_products.append({
                     "product_id":   str(pid),
                     "name":         name,
@@ -639,6 +709,8 @@ async def stylist_chat(payload: StylistChatRequest):
                     "linha":        linha,  # AGUA / VIDA / LUZ (se vier no collection)
                     "gender":       (gender or "").strip().upper(),
                     "department":   (dept or "").strip().upper(),
+                    "modelo":       modelo_clean,
+                    "tecido":       tecido_clean,
                     "image_url":    img_clean,
                     "url":          url_clean,
                     "_tipo":        tipo,
@@ -1063,6 +1135,7 @@ async def stylist_chat(payload: StylistChatRequest):
         (
             f"ID:{p['product_id']}|TIPO:{p['_tipo']}|NOME:{p['name']}"
             f"|COR:{p['color']}|ESTAMPARIA:{p['print_name']}"
+            f"|MODELO:{p['modelo']}|TECIDO:{p['tecido']}"
             f"|MIX:{p['mix']}|LINHA:{p['linha']}"
             f"|GENERO:{p['gender']}|PRECO:{p['price']}"
             + (f"|DE:{p['list_price']}" if p.get("list_price") else "")
@@ -1116,6 +1189,25 @@ CATÁLOGO DISPONÍVEL:
 GUIA DE USO DO CADASTRO VTEX
 ═══════════════════════════════════════════
 
+CAMPO MODELO (modelagem da peça — campo da VTEX):
+  Sutiãs: ALCA, FAIXA, CORTININHA, FRENTE UNICA, LACINHO, BOJO, TRIANGULO, ASA DELTA, TOMARA QUE CAIA, ENGANA MAMAE
+  Calcinhas: LATERAL MEDIA, LATERAL LARGA, LATERAL FINA, HOT PANTS, FRENTE UNICA, FAIXA
+  Saídas: MIDI, LONGA, CURTA, KIMONO, KAFTA, PAREO, SARONG
+  Quando cliente pede modelo específico (ex: "alça", "faixa", "cortininha") → filtre por esse modelo
+  Um look de biquíni premium geralmente combina sutiã e calcinha do MESMO MODELO (ex: FAIXA + HOT PANTS FAIXA)
+
+CAMPO TECIDO (composição do tecido — campo da VTEX):
+  Praia: LYCRA MICROFIBRA UV50, LYCRA 81 MICROFIBRA (mais resistente), LYCRA CREPON UV50, LYCRA EXTRA BRILHO UV50
+  Roupa: ALGODAO, MALHA DE ALGODAO, VISCOSE, GEORGETTE DE VISCOSE, CREPE MOSS
+  Tecidos premium/textura: AMBRA, TULE, LYCRA PLISSADA, LYCRA TEXTURA CASCA UV50
+  Tricô/Malha: TRICOLINE, MALHA CONFORT, MALHA CLAIRE STRETCH
+  Quando cliente pede "fresquinho" → ALGODAO ou VISCOSE | "proteção solar" → UV50 | "elegante" → LYCRA EXTRA BRILHO ou AMBRA
+
+JUSTIFICAR PREÇO PREMIUM (produto acima de R$600):
+  Mencione o diferencial de forma natural: "peça em lycra UV50 que protege e dura temporadas", 
+  "tecido exclusivo AMBRA de toque suave", "coleção artesanal com detalhes bordados à mão"
+  Nunca apresente o preço sem contexto — antecipe a objeção com o valor percebido
+
 CAMPO ESTAMPARIA (exatamente como cadastrado):
   • LISO         = peça lisa, sem textura ou detalhe → combina com LISO ou ESTAMPADO
   • ESTAMPADO    = peça com estampa (floral, geométrica, animal print…)
@@ -1143,11 +1235,25 @@ QUANDO CLIENTE MENCIONA UMA ESTAMPA/MIX (ex: "camuflado", "báltico", "java"):
 
 REGRA ABSOLUTA — NUNCA AFIRME QUE UM PRODUTO NÃO EXISTE:
 ⚠️ PROIBIDO dizer: "não temos", "não há", "não encontrei", "não disponível", "não faz parte do catálogo".
-O catálogo que você recebe é uma AMOSTRA ALEATÓRIA de produtos — NÃO é o catálogo completo.
-Se não viu preto na amostra → NÃO SABE se tem preto. Não pode afirmar que não tem.
-Se não viu maiô preto → diga: "Nessa seleção trouxe as opções disponíveis. Quer que eu busque especificamente em preto?"
-Se o cliente pede cor/tamanho específico que não aparece → mostre o mais próximo E sugira que ele acesse o site para ver todas as opções nessa cor/tamanho.
-NUNCA invente ausência de produto. Mostre sempre o que tem na amostra.
+O catálogo que você recebe é UMA AMOSTRA — NÃO é o catálogo completo da loja.
+Se não viu preto → mostre as cores disponíveis e diga "Aqui estão as opções disponíveis. Para mais cores, explore nosso site."
+NUNCA invente ausência. NUNCA diga "não temos X".
+
+FLUXO DE RECOMENDAÇÃO — SIGA ESTA ORDEM:
+1. CLIENTE PEDE UM TIPO DE PEÇA (ex: "sutiã preto", "biquíni alça", "vestido verde")
+   → Mostre TODAS as opções disponíveis desse tipo no catálogo recebido
+   → Mensagem: apresente as opções sem perguntar complemento ainda
+   → NÃO misture outros tipos (bolsa, óculos) quando o pedido é claro
+
+2. CLIENTE ESCOLHE OU PEDE COMPLEMENTO (ex: "gostei desse, o que combina?")
+   → Sugira o complemento: calcinha do mesmo mix, saída que combina, sandália
+   → AGORA pode sugerir acessórios
+
+3. REGRA DE MIX: sutiã estampado → calcinha do MESMO MIX. Se não tiver: calcinha LISA
+   → Verde combina com: off white, bege, areia, marrom, caramelo — NÃO com azul/rosa/vermelho
+
+QUANTIDADE DE PRODUTOS: sempre mostre o MÁXIMO disponível no catálogo (até o limite).
+Catálogo vasto = mais opções = mais chance de conversão. Nunca limite a 1-2 produtos.
 
 CAMPO TIPO:
   • PRAIA_TOP    = sutiã de biquíni — precisa de PRAIA_BOTTOM da mesma COLECAO
@@ -1190,7 +1296,19 @@ REGRAS DE PAREAMENTO (obrigatórias)
    → NUNCA sugira saída de praia como complemento de look de escritório/casual urbano
    → NUNCA sugira calça de alfaiataria com biquíni
 
-4. COMPLEMENTO POR TIPO:
+4. COMPLEMENTO POR TIPO E FLUXO DE CONVERSA:
+
+   QUANDO CLIENTE PEDE UM TIPO (ex: "biquíni alça", "sutiã alça"):
+   → Passo 1: mostre TODAS as opções disponíveis desse tipo no catálogo
+   → Passo 2: pergunte qual o cliente prefere OU espere ele escolher
+   → Passo 3: SÓ DEPOIS sugira a calcinha/complemento
+   → NUNCA pule para calcinha antes do cliente escolher o sutiã
+
+   QUANDO CLIENTE JÁ TEM UM PRODUTO (ex: "tenho o Sutiã Palmeiras Alça Verde"):
+   → Sugira complementos: calcinha do mesmo MIX + saída que combina
+   → Se calcinha do mesmo mix não existir: calcinha LISA na cor que combina com o sutiã
+   → Verde combina com: off white, bege, areia, marrom — NÃO com azul bebê
+
    PRAIA_TOP (sutiã) → PRAIA_BOTTOM mesmo MIX + SAIDA mesmo MIX ou LISO neutro
    PRAIA_BOTTOM (calcinha) → PRAIA_TOP mesmo MIX + SAIDA mesmo MIX ou LISO neutro
    MAIO → SAIDA mesmo MIX ou LISO neutro (NUNCA calcinha)
@@ -1198,11 +1316,23 @@ REGRAS DE PAREAMENTO (obrigatórias)
    BOTTOM estampado → TOP mesmo MIX, se não tiver: TOP LISO cor combinando
    VESTIDO → sandália + acessório (look completo sozinho)
 
-5. QUANDO CLIENTE PEDE COMPLEMENTO:
-   "Tenho a Blusa Cobra Rosa, quero calça"
-   → Passo 1: busca BOTTOM com "Cobra Rosa" no nome → se achar, sugere
-   → Passo 2: se não achar → BOTTOM LISO na cor rosa, off white, bege ou nude
-   → NUNCA: BOTTOM com outra estampa diferente
+5. QUANDO CLIENTE PEDE COMPLEMENTO (tem uma peça e quer combinar):
+   "A camisa para a saia listra" / "o que combina com meu biquíni" / "tenho X, quero Y"
+
+   → Se o cliente NÃO mandou link da peça:
+     PEÇA O LINK antes de sugerir:
+     "Para sugerir o complemento perfeito, me manda o link da [peça] no site para eu ver
+      a estampa e cor exatas. 🔗 É só copiar o link da página do produto!"
+
+   → Se o cliente JÁ mandou o link (ou se a peça está no catálogo abaixo com TIPO:):
+     Passo 1: identifica a cor e estampa da peça base
+     Passo 2: busca complemento do mesmo MIX → se achar, sugere
+     Passo 3: se não achar mesmo MIX → LISO na cor que combina
+     NUNCA: outra estampa diferente
+
+   EXCEÇÃO — não precisa pedir link se:
+   • A peça está claramente identificada no catálogo recebido (ex: ID: 12345)
+   • O cliente já descreveu cor e estampa com precisão ("minha saia listrada azul e branca")
 
 6. SAÍDA DE PRAIA:
    Verifique LINHA:AGUA — saídas com LINHA:VIDA são peças de lifestyle, não saída de praia

@@ -188,8 +188,13 @@ async def run() -> None:
                             # Mantém collection para retrocompatibilidade (linha tem prioridade)
                             row.collection = _linha_val or _mix_val
                             # Novos campos separados
-                            row.linha = _linha_val.upper().strip() if _linha_val else None
-                            row.mix   = _mix_val.strip() if _mix_val else None
+                            row.linha   = _linha_val.upper().strip() if _linha_val else None
+                            row.mix     = _mix_val.strip() if _mix_val else None
+                            # Novos campos: modelo (alça, faixa, cortininha...) e tecido
+                            _modelo_val = spec("0- modelo") or spec("modelo")
+                            _tecido_val = spec("tecido")
+                            row.modelo  = _modelo_val.upper().strip() if _modelo_val else None
+                            row.tecido  = _tecido_val.strip() if _tecido_val else None
 
                             row.image_url = (first_sku or {}).get("ImageUrl")
 

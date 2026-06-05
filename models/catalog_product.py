@@ -30,6 +30,10 @@ class CatalogProduct(Base):
     linha: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # mix: nome do mix/coleção para pareamento (ex: "Báltico", "Copa", "Ipanema")
     mix: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # modelo: tipo de modelagem (ALCA, FAIXA, CORTININHA, FRENTE UNICA, HOT PANTS...)
+    modelo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # tecido: composição do tecido (LYCRA MICROFIBRA UV50, ALGODAO, MALHA DE ALGODAO...)
+    tecido: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Preço de venda atual (Por / sellingPrice da VTEX, em R$)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
