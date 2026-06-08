@@ -355,9 +355,17 @@ async def stylist_chat(payload: StylistChatRequest):
 
     # Monta filtro de product_type para a query
     if _specific_types:
-        # Produto específico pedido: busca APENAS esse tipo
-        # Não mistura bolsas/acessórios quando cliente pede sutiã ou vestido
-        _type_filter = _specific_types
+        # Produto específico pedido — inclui complemento natural do mesmo mix
+        # Sutiã → sempre incluir calcinha (para mostrar o conjunto completo)
+        # Calcinha → sempre incluir sutiã
+        _is_sutia_req = any(t in ("BIQUINI SUTIA","SUTIA") for t in _specific_types)
+        _is_calc_req  = any(t in ("BIQUINI CALCINHA","CALCINHA") for t in _specific_types)
+        if _is_sutia_req and not _is_calc_req:
+            _type_filter = _specific_types + ("BIQUINI CALCINHA","CALCINHA","SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO","CAPA","CANGA")
+        elif _is_calc_req and not _is_sutia_req:
+            _type_filter = _specific_types + ("BIQUINI SUTIA","SUTIA","SAIDA DE PRAIA","CANGA")
+        else:
+            _type_filter = _specific_types
     elif _is_beach_pre and not _is_party_pre:
         _type_filter = _BEACH_TYPES
     elif _is_party_pre and not _is_beach_pre:
@@ -1095,20 +1103,25 @@ async def stylist_chat(payload: StylistChatRequest):
     # Ex: pediu sutiã alça → PRAIA_TOP recebe slot generoso para mostrar várias opções
     _specific_slot = 12 if _specific_types else 5
 
+    # Detecta se pediu sutiã ou calcinha para ajustar slots de conjunto
+    _pediu_sutia = _specific_types and any(t in ("BIQUINI SUTIA","SUTIA") for t in _specific_types)
+    _pediu_calc  = _specific_types and any(t in ("BIQUINI CALCINHA","CALCINHA") for t in _specific_types)
+
     slots = {
-        "SAIDA":        15 if is_saida else 8,
         "VESTIDO":      8  if is_saida else 6,
         "BOTTOM":       _specific_slot if _specific_types and any(t in ("CALCA","SHORT","SAIA","BERMUDA") for t in (_specific_types or ())) else (4 if is_saida else 3),
         "TOP":          _specific_slot if _specific_types and any(t in ("BLUSA/TOP","BLUSA","TOP","CAMISETA","CAMISA") for t in (_specific_types or ())) else 3,
         "ROUPA":        4,
         "MAIO":         _specific_slot if _specific_types and "MAIO" in (_specific_types or ()) else 5,
-        "PRAIA_TOP":    0 if _has_maio_context else (_specific_slot if _specific_types and any(t in ("BIQUINI SUTIA","SUTIA") for t in (_specific_types or ())) else 5),
-        "PRAIA_BOTTOM": 0 if _has_maio_context else (_specific_slot if _specific_types and any(t in ("BIQUINI CALCINHA","CALCINHA") for t in (_specific_types or ())) else 5),
+        # Quando pediu sutiã: muitos slots para TOP e BOTTOM para mostrar conjunto completo
+        # Quando pediu calcinha: muitos slots para BOTTOM e TOP
+        "PRAIA_TOP":    0 if _has_maio_context else (_specific_slot if _pediu_sutia else (8 if _pediu_calc else 5)),
+        "PRAIA_BOTTOM": 0 if _has_maio_context else (_specific_slot if _pediu_calc else (8 if _pediu_sutia else 5)),
+        "SAIDA":        (_specific_slot if (_pediu_sutia or _pediu_calc) else (15 if is_saida else 8)),
         "SUNGA":        _specific_slot if _specific_types and "SUNGA" in (_specific_types or ()) else 4,
         "CALCADO":      _specific_slot if _specific_types and any(t in ("SANDALIA","SANDÁLIAS","RASTEIRA","CHINELO") for t in (_specific_types or ())) else 3,
         "BOLSA":        _specific_slot if _specific_types and "BOLSA" in (_specific_types or ()) else 3,
         "ACESSORIO":    _specific_slot if _specific_types and any(t in ("CHAPEU/BONE/VISEIRA","OCULOS","ÓCULOS","BRINCO","COLAR") for t in (_specific_types or ())) else 2,
-        "SAIDA":        15 if is_saida else (_specific_slot if _specific_types and any(t in ("SAIDA DE PRAIA","SAIDA DE BANHO","CAPA/CAPA KIMONO","CAPA","CANGA","TUNICA","PAREO") for t in (_specific_types or ())) else 8),
     }
     balanced: list[dict] = []
     seen_ids: set = set()
@@ -1279,8 +1292,12 @@ CAMPO TIPO:
 REGRAS DE PAREAMENTO (obrigatórias)
 ═══════════════════════════════════════════
 
-1. BIQUÍNI = PRAIA_TOP + PRAIA_BOTTOM com MIX IDÊNTICO. Sempre.
-   Nunca sugira PRAIA_TOP sem o PRAIA_BOTTOM correspondente (e vice-versa).
+1. BIQUÍNI = PRAIA_TOP + PRAIA_BOTTOM com MIX IDÊNTICO. SEMPRE.
+   → Quando tiver sutiã estampado: busque a calcinha com o MESMO NOME de mix no catálogo
+   → Ex: "Sutiã Alça Copa Palmeiras" → busque "Calcinha * Copa Palmeiras" ou "Calcinha * Palmeiras"
+   → Se não achar calcinha do mesmo mix: calcinha LISA na cor que combina
+   → Apresente SEMPRE o conjunto: sutiã + calcinha + saída (quando disponível)
+   → NUNCA mostre só o sutiã sem mencionar a calcinha. O conjunto é a venda.
 
 2. REGRA MESTRA DE ESTAMPARIA:
 
