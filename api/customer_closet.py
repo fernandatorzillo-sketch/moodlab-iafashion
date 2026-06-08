@@ -316,13 +316,25 @@ async def stylist_chat(payload: StylistChatRequest):
     }
 
     # Verifica se pediu produto específico (prioridade máxima)
+    # Usa word boundary para evitar "saia" em "pra saia de listra" sobrescrever "camisa"
+    import re as _re
     _specific_types = None
-    _specific_kw    = None  # keyword que disparou (ex: "alça", "faixa")
+    _specific_kw    = None
+    # Primeira passagem: procura keywords que aparecem como SUBSTANTIVO PRINCIPAL
+    # (antes de preposições como "pra", "para", "com", "de")
+    _msg_subject = _re.split(r'\s+(?:pra|para|com|de|da|do|em)\s+', _msg_pre)[0]
     for kw, types in _PRODUCT_KEYWORDS.items():
-        if kw in _msg_pre:
+        if kw in _msg_subject:
             _specific_types = types
             _specific_kw    = kw
             break
+    # Segunda passagem: se não achou no sujeito, busca na mensagem completa
+    if not _specific_types:
+        for kw, types in _PRODUCT_KEYWORDS.items():
+            if kw in _msg_pre:
+                _specific_types = types
+                _specific_kw    = kw
+                break
 
     # Modelo de sutiã pedido (alça, faixa, bandeau, cortininha...)
     # Usado para filtrar por nome do produto na query SQL
