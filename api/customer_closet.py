@@ -259,26 +259,25 @@ async def stylist_chat(payload: StylistChatRequest):
                 json={
                     "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 200,
-                    "system": """Você é um extrator de intent para uma loja de moda praia brasileira (Água de Coco).
-Dado o histórico e a mensagem atual, extraia as informações relevantes em JSON.
-Responda APENAS com JSON válido, sem texto antes ou depois.
-Campos:
-- tipo_produto: array de tipos (BIQUINI SUTIA, BIQUINI CALCINHA, MAIO, SUNGA, VESTIDO, CAMISA, CAMISETA, CALCA, SAIA, SHORT, SAIDA DE PRAIA, CANGA, BOLSA, CALCADO, ACESSORIO, null)
-- mix_nome: nome do mix/coleção mencionado (ex: "Luz Dourado", "Báltico", "Copa") ou null
-- cor: cor pedida ou null
-- tamanho: tamanho pedido (PP,P,M,G,GG) ou null  
-- ocasiao: praia, festa, casual, festa_na_praia, ou null
-- is_sale: true se quer promoção/sale
-- is_complemento: true se quer complemento de peça que já tem
-- linha: AGUA (praia), VIDA (roupa), LUZ (festa) ou null
-- modelo: alca, faixa, cortininha, bandeau, frente_unica, hot_pants ou null""",
-                    "messages": [{"role": "user", "content": f"Histórico: {_hist_summary}\nMensagem atual: {message}"}]
+                    "system": (
+                        "Extrator de intent para loja de moda praia Água de Coco. "
+                        "Responda SOMENTE JSON puro sem markdown sem texto extra.\n"
+                        'Exemplo: {"tipo_produto":["VESTIDO"],"mix_nome":"Luz Dourado","cor":"dourado","linha":"LUZ","ocasiao":null,"is_sale":false,"is_complemento":false,"modelo":null,"tamanho":null}\n'
+                        "Tipos: BIQUINI SUTIA, BIQUINI CALCINHA, MAIO, SUNGA, VESTIDO, CAMISA, CAMISETA, CALCA, SAIA, SHORT, SAIDA DE PRAIA, CANGA, BOLSA, CALCADO, ACESSORIO.\n"
+                        "Linha: AGUA=praia, VIDA=roupa, LUZ=festa. mix_nome=nome do mix se mencionado, senao null.\n""genero: MASCULINO se pediu roupa masculina/para homem, FEMININO se pediu feminino, null se nao mencionou."
+                    ),
+                    "messages": [{"role": "user", "content": f"Historico: {_hist_summary} | Mensagem: {message}"}]
                 },
                 timeout=4.0
             )
             if _intent_resp.status_code == 200:
-                _raw = _intent_resp.json().get("content",[{}])[0].get("text","")
-                _intent = _json_intent.loads(_raw.strip())
+                _raw = _intent_resp.json().get("content",[{}])[0].get("text","").strip()
+                if _raw.startswith("```"):
+                    _raw = _raw.replace("```json","").replace("```","").strip()
+                try:
+                    _intent = _json_intent.loads(_raw)
+                except Exception:
+                    _intent = {}
     except Exception:
         pass
 
@@ -455,18 +454,31 @@ Campos:
 
         async with AsyncSessionLocal() as db:
             # Base: exclui infantil/casa e aplica filtro de gênero pelo perfil do cliente
-            _msg_has_masc = any(t in _msg_pre for t in ["masculino","marido","namorado","pai","irmão","homem"])
+            _msg_has_masc = any(t in _msg_pre for t in ["masculino","marido","namorado","pai","irmão","homem","roupa masculina","moda masculina","só quero masculino","so quero masculino"])
             _msg_has_fem  = any(t in _msg_pre for t in ["feminino","mulher","minha"])
+            # Intent também detecta gênero
+            _intent_gender = (_intent.get("genero") or "").upper() if _intent else ""
+            if _intent_gender == "MASCULINO":
+                _msg_has_masc = True
+            elif _intent_gender == "FEMININO":
+                _msg_has_fem = True
+
             _gender_clause = ""
-            if client_gender == "MASCULINO" and not _msg_has_fem:
-                # Cliente masculino: exclui feminino (mas mantém unissex)
+            if _msg_has_masc and not _msg_has_fem:
+                # Cliente pediu explicitamente masculino — exclui feminino
+                _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('FEMININO')"
+            elif client_gender == "MASCULINO" and not _msg_has_fem:
                 _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('FEMININO')"
             elif client_gender == "FEMININO" and not _msg_has_masc:
-                # Cliente feminino: exclui masculino
                 _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
             elif not client_gender and not _msg_has_masc:
-                # Sem perfil e sem pedido explícito de masculino: default feminino (marca)
-                _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
+                # Sem perfil e sem pedido masculino: default feminino (marca)
+                # EXCEÇÃO: sunga, bermuda, camisa polo — produtos tipicamente masculinos
+                _is_masc_product = _specific_types and any(
+                    t in ("SUNGA","BERMUDA","BOARDSHORT") for t in (_specific_types or ())
+                )
+                if not _is_masc_product:
+                    _gender_clause = "AND UPPER(COALESCE(cp.gender,'')) NOT IN ('MASCULINO')"
 
             _base_where = f"""
                 cp.is_active = 1
