@@ -234,17 +234,68 @@ async def stylist_chat(payload: StylistChatRequest):
     except Exception:
         pass
 
-    # ── 2. Catálogo — query por contexto da conversa ────────────────────────
-    # Detecta contexto ANTES da query para carregar só o necessário
-    # (evita pegar 120 produtos genéricos e filtrar depois)
+    # ── 2. Intent extraction — entende o que o cliente quer de verdade ──────
+    # Combina mensagem atual + histórico do usuário para contexto completo
     _msg_pre = (message + " " + " ".join(
         h.content for h in (payload.history or [])[-8:] if h.role == "user"
     )).lower()
-    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono","barco","iate","deck","náutico","luau","festa na praia","reveillon na praia"])
-    _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"])
-    _is_sale_pre   = any(t in _msg_pre for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato"])
+
+    # Extrai intent estruturado da mensagem usando Haiku (rápido, barato)
+    # Retorna: tipo_produto, mix_nome, cor, tamanho, ocasiao, is_sale, is_complemento
+    _intent = {}
+    try:
+        import httpx as _httpx_intent
+        import json as _json_intent
+        import os as _os_intent
+        _ak = _os_intent.environ.get("ANTHROPIC_API_KEY","")
+        if _ak:
+            _hist_summary = " | ".join(
+                f"{h.role}: {h.content[:80]}"
+                for h in (payload.history or [])[-4:]
+            )
+            _intent_resp = _httpx_intent.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": _ak, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 200,
+                    "system": """Você é um extrator de intent para uma loja de moda praia brasileira (Água de Coco).
+Dado o histórico e a mensagem atual, extraia as informações relevantes em JSON.
+Responda APENAS com JSON válido, sem texto antes ou depois.
+Campos:
+- tipo_produto: array de tipos (BIQUINI SUTIA, BIQUINI CALCINHA, MAIO, SUNGA, VESTIDO, CAMISA, CAMISETA, CALCA, SAIA, SHORT, SAIDA DE PRAIA, CANGA, BOLSA, CALCADO, ACESSORIO, null)
+- mix_nome: nome do mix/coleção mencionado (ex: "Luz Dourado", "Báltico", "Copa") ou null
+- cor: cor pedida ou null
+- tamanho: tamanho pedido (PP,P,M,G,GG) ou null  
+- ocasiao: praia, festa, casual, festa_na_praia, ou null
+- is_sale: true se quer promoção/sale
+- is_complemento: true se quer complemento de peça que já tem
+- linha: AGUA (praia), VIDA (roupa), LUZ (festa) ou null
+- modelo: alca, faixa, cortininha, bandeau, frente_unica, hot_pants ou null""",
+                    "messages": [{"role": "user", "content": f"Histórico: {_hist_summary}\nMensagem atual: {message}"}]
+                },
+                timeout=4.0
+            )
+            if _intent_resp.status_code == 200:
+                _raw = _intent_resp.json().get("content",[{}])[0].get("text","")
+                _intent = _json_intent.loads(_raw.strip())
+    except Exception:
+        pass
+
+    # Fallback para keyword matching se intent extraction falhar
+    _is_beach_pre  = any(t in _msg_pre for t in ["praia","biquini","biquíni","maio","maiô","resort","piscina","mar","surf","sunga","saída","saida","canga","kimono","barco","iate","deck","náutico","luau","festa na praia","reveillon na praia"]) or _intent.get("ocasiao") in ("praia","festa_na_praia")
+    _is_party_pre  = any(t in _msg_pre for t in ["festa","balada","jantar","evento","sofisticad","formatura","casamento","barco","iate","reveillon"]) or _intent.get("ocasiao") in ("festa","festa_na_praia")
+    _is_sale_pre   = any(t in _msg_pre for t in ["promoção","promocao","promo","desconto","sale","oferta","mais barato","barato"]) or _intent.get("is_sale")
     _is_cold_pre   = any(t in _msg_pre for t in ["frio","inverno","tricô","trico","casaco"])
-    _is_casual_pre = any(t in _msg_pre for t in ["casual","dia a dia","passeio","shopping","trabalho"])
+    _is_casual_pre = any(t in _msg_pre for t in ["casual","dia a dia","passeio","shopping","trabalho"]) or _intent.get("ocasiao") == "casual"
+
+    # Intent sobrescreve mix e cor detectados pelo regex
+    _intent_mix   = _intent.get("mix_nome")   # ex: "Luz Dourado"
+    _intent_cor   = _intent.get("cor")        # ex: "dourado"
+    _intent_linha = _intent.get("linha")      # ex: "LUZ"
+    _intent_modelo = _intent.get("modelo")    # ex: "alca"
+    _intent_size  = _intent.get("tamanho")    # ex: "M"
+    _intent_tipos = _intent.get("tipo_produto") or []  # ex: ["BIQUINI SUTIA"]
 
     # Tipos de produto relevantes por contexto
     # Sempre inclui calçados, bolsas e acessórios como complementos de look
@@ -315,31 +366,41 @@ async def stylist_chat(payload: StylistChatRequest):
         "blazer":        ("JAQUETA/BLAZER/PARKA","BLAZER"),
     }
 
-    # Verifica se pediu produto específico (prioridade máxima)
-    # Usa word boundary para evitar "saia" em "pra saia de listra" sobrescrever "camisa"
+    # Verifica se pediu produto específico — intent IA tem prioridade sobre keywords
     import re as _re
     _specific_types = None
     _specific_kw    = None
-    # Primeira passagem: procura keywords que aparecem como SUBSTANTIVO PRINCIPAL
-    # (antes de preposições como "pra", "para", "com", "de")
-    _msg_subject = _re.split(r'\s+(?:pra|para|com|de|da|do|em)\s+', _msg_pre)[0]
-    for kw, types in _PRODUCT_KEYWORDS.items():
-        if kw in _msg_subject:
-            _specific_types = types
-            _specific_kw    = kw
-            break
-    # Segunda passagem: se não achou no sujeito, busca na mensagem completa
+
+    # 1. Intent IA (mais preciso — entende contexto completo)
+    if _intent_tipos:
+        _specific_types = tuple(_intent_tipos)
+        _specific_kw    = _intent_tipos[0].lower() if _intent_tipos else None
+
+    # 2. Fallback: keyword matching com word boundary
     if not _specific_types:
+        _msg_subject = _re.split(r'\s+(?:pra|para|com|de|da|do|em)\s+', _msg_pre)[0]
         for kw, types in _PRODUCT_KEYWORDS.items():
-            if kw in _msg_pre:
+            if kw in _msg_subject:
                 _specific_types = types
                 _specific_kw    = kw
                 break
+        if not _specific_types:
+            for kw, types in _PRODUCT_KEYWORDS.items():
+                if kw in _msg_pre:
+                    _specific_types = types
+                    _specific_kw    = kw
+                    break
 
-    # Modelo de sutiã pedido (alça, faixa, bandeau, cortininha...)
-    # Usado para filtrar por nome do produto na query SQL
+    # Modelo — intent IA tem prioridade sobre keyword
     _MODELO_KWS = {"alça","alca","faixa","cortininha","bandeau","frente única","frente unica","hot pants"}
-    _modelo_filter = _specific_kw if _specific_kw in _MODELO_KWS else None
+    _modelo_filter = _intent_modelo or (_specific_kw if _specific_kw in _MODELO_KWS else None)
+
+    # Mix — intent IA tem prioridade sobre estampa keywords
+    if _intent_mix and not any(kw in _msg_pre for kw in ["camuflado","báltico","floral","listrad"]):
+        # O intent extraiu um mix — usar como filtro de nome
+        _intent_mix_clean = _intent_mix.lower().strip()
+    else:
+        _intent_mix_clean = None
 
     # Detecta pergunta de refinamento — mensagem curta sem novo contexto
     # Ex: "tem preto?", "tem no M?", "e em azul?", "qual o preço?"
@@ -449,6 +510,25 @@ async def stylist_chat(payload: StylistChatRequest):
                 _order = "ORDER BY RANDOM()"
                 _limit = "LIMIT 60"
 
+            # Filtros do intent IA
+            _mix_intent_clause = ""
+            _linha_intent_clause = ""
+            if _intent_mix_clean:
+                _mix_words = [w for w in _intent_mix_clean.split() if len(w) > 2]
+                if _mix_words:
+                    _mix_intent_clause = "AND (" + " OR ".join(
+                        f"LOWER(cp.name) LIKE :mix_w{i}" for i in range(len(_mix_words))
+                    ) + ")"
+                    for i, w in enumerate(_mix_words):
+                        _params[f"mix_w{i}"] = f"%{w}%"
+            if _intent_cor and not _requested_color:
+                _requested_color = _intent_cor.lower()
+            if _intent_size and not _requested_size:
+                _requested_size = _intent_size.upper()
+            if _intent_linha:
+                _linha_intent_clause = "AND UPPER(COALESCE(cp.linha,'')) = :intent_linha"
+                _params["intent_linha"] = _intent_linha.upper()
+
             # Filtro por modelo: campo modelo do banco (VTEX) com fallback pelo nome
             _modelo_clause = ""
             if _modelo_filter:
@@ -503,6 +583,8 @@ async def stylist_chat(payload: StylistChatRequest):
                 WHERE {_base_where}
                 {_type_clause}
                 {_modelo_clause}
+                {_mix_intent_clause}
+                {_linha_intent_clause}
                 {_color_sql_clause}
                 {_size_sql_clause}
                 {_order}
@@ -746,7 +828,9 @@ async def stylist_chat(payload: StylistChatRequest):
         {
             "keywords": ["tem promoção","tem promocao","tem sale","ver sale","ver promoção",
                          "o que tem de promoção","peças em promoção","alguma promoção","promoções",
-                         "quero promoção","quero promocao","quero sale"],
+                         "quero promoção","quero promocao","quero sale",
+                         "ver em promoção","ver em promocao","em promoção","em promocao",
+                         "mostrar promoção","ver promoções","quero ver promoção"],
             "message": f"{client_name}, temos nossa categoria SALE com peças especiais com até 70% OFF! 🎉 Separei algumas opções com preço especial para você:",
             "action": "sale",
         },
@@ -1258,11 +1342,14 @@ QUANDO CLIENTE MENCIONA UMA ESTAMPA/MIX (ex: "camuflado", "báltico", "java"):
   3. Se não achar complemento do mesmo mix: lisas NEUTRAS que combinam — NUNCA outra estampa
   4. JAMAIS substitua "camuflado" por "estampado vermelho" ou qualquer outra estampa
 
-REGRA ABSOLUTA — NUNCA AFIRME QUE UM PRODUTO NÃO EXISTE:
-⚠️ PROIBIDO dizer: "não temos", "não há", "não encontrei", "não disponível", "não faz parte do catálogo".
-O catálogo que você recebe é UMA AMOSTRA — NÃO é o catálogo completo da loja.
-Se não viu preto → mostre as cores disponíveis e diga "Aqui estão as opções disponíveis. Para mais cores, explore nosso site."
-NUNCA invente ausência. NUNCA diga "não temos X".
+REGRA ABSOLUTA — NUNCA AFIRME QUE NÃO TEMOS / NÃO HÁ / NÃO ENCONTREI:
+⚠️ PROIBIDO dizer: "não temos", "não há", "não encontrei", "não disponível", "nenhum produto em promoção",
+   "não está em promoção", "não faz parte do catálogo", "infelizmente não".
+O catálogo que você recebe é UMA AMOSTRA ALEATÓRIA — NÃO é o catálogo completo.
+Se não viu X na amostra → você NÃO SABE se existe. Apresente o que tem na amostra.
+⚠️ ESPECIALMENTE PARA PROMOÇÃO: se o cliente pede produtos em promoção e você vê produtos com campo DE:
+   preenchido ou departamento SALE — ESSES SÃO OS PRODUTOS EM PROMOÇÃO. Apresente-os como tal.
+   NUNCA diga "nenhum produto em promoção" quando há produtos com DE: no catálogo.
 
 FLUXO DE RECOMENDAÇÃO — SIGA ESTA ORDEM:
 1. CLIENTE PEDE UM TIPO DE PEÇA (ex: "sutiã preto", "biquíni alça", "vestido verde")
