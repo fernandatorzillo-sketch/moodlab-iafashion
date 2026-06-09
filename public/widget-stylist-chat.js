@@ -1053,13 +1053,8 @@
     injectStyles();
     buildUI();
 
-    // Abre automaticamente após 1.5s se não foi fechado manualmente nessa sessão
-    const wasManuallyClosed = sessionStorage.getItem("ml_ps_closed") === "1";
-    if (!wasManuallyClosed) {
-      setTimeout(() => {
-        if (!state.open) openPanel();
-      }, 1500);
-    }
+    // Auto-open desativado temporariamente
+    // Só abre quando cliente clica no botão flutuante
 
     // Badge após 4s se não abriu
     setTimeout(() => {
